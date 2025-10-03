@@ -110,6 +110,7 @@ class StreakProvider extends ChangeNotifier {
           date: today,
           stepsGoal: await _getGoalValue('steps') ?? 10000,
           caloriesGoal: await _getGoalValue('calories') ?? 2000,
+          caloriesBurnedGoal: await _getGoalValue('active_calories') ?? 500,
           sleepGoal: await _getGoalValue('sleep') ?? 8.0,
           waterGoal: await _getGoalValue('water') ?? 8,
           proteinGoal: await _getGoalValue('protein') ?? 50,
@@ -189,6 +190,7 @@ class StreakProvider extends ChangeNotifier {
         // Update with user goals
         stepsGoal: profile.dailyStepsTarget ?? 10000,
         caloriesGoal: profile.dailyCaloriesTarget ?? 2000,
+        caloriesBurnedGoal: profile.dailyActiveCaloriesTarget ?? 500,
         sleepGoal: profile.dailySleepTarget ?? 8.0,
         waterGoal: profile.dailyWaterTarget?.toInt() ?? 8,
         proteinGoal: nutritionProvider.proteinGoal.toDouble(),
@@ -458,9 +460,9 @@ class StreakProvider extends ChangeNotifier {
     int count = 0;
     if (_todayMetrics!.stepsAchieved) count++;
     if (_todayMetrics!.caloriesAchieved) count++;
+    if (_todayMetrics!.caloriesBurnedAchieved) count++;
     if (_todayMetrics!.sleepAchieved) count++;
     if (_todayMetrics!.waterAchieved) count++;
-    if (_todayMetrics!.nutritionAchieved) count++;
     return count;
   }
 

@@ -151,55 +151,8 @@ class StreakDisplayWidget extends StatelessWidget {
             ],
           ),
           
-          SizedBox(height: 16),
-          
-          // Today's Progress
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Today\'s Goals',
-                    style: TextStyle(
-                      color: isActive 
-                          ? Colors.white70
-                          : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
-                      fontSize: 14,
-                    ),
-                  ),
-                  Text(
-                    '$goalsCompleted/5 completed',
-                    style: TextStyle(
-                      color: isActive 
-                          ? Colors.white
-                          : AppTheme.primaryAccent,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: todayProgress / 100,
-                  minHeight: 8,
-                  backgroundColor: isActive 
-                      ? Colors.white24
-                      : (isDarkMode ? Colors.grey[700] : Colors.grey[300]),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    goalsCompleted == 5 
-                        ? AppTheme.successGreen
-                        : (isActive ? Colors.white : AppTheme.primaryAccent),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
+          // Progress bar removed - now using StreakChecklistWidget in progress_screen_new.dart
+
           SizedBox(height: 16),
           
           // Grace Period Warning (if applicable)

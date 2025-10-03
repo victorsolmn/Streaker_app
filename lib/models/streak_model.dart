@@ -27,6 +27,7 @@ class UserDailyMetrics {
   // Goals
   final int stepsGoal;
   final int caloriesGoal;
+  final int caloriesBurnedGoal; // NEW: Active calorie burn goal
   final double sleepGoal;
   final int waterGoal;
   final double proteinGoal;
@@ -34,6 +35,7 @@ class UserDailyMetrics {
   // Achievement Flags
   final bool stepsAchieved;
   final bool caloriesAchieved;
+  final bool caloriesBurnedAchieved; // NEW: Active calorie burn achieved
   final bool sleepAchieved;
   final bool waterAchieved;
   final bool nutritionAchieved;
@@ -61,11 +63,13 @@ class UserDailyMetrics {
     this.weight,
     this.stepsGoal = 10000,
     this.caloriesGoal = 2000,
+    this.caloriesBurnedGoal = 500,
     this.sleepGoal = 8.0,
     this.waterGoal = 8,
     this.proteinGoal = 50,
     this.stepsAchieved = false,
     this.caloriesAchieved = false,
+    this.caloriesBurnedAchieved = false,
     this.sleepAchieved = false,
     this.waterAchieved = false,
     this.nutritionAchieved = false,
@@ -76,22 +80,25 @@ class UserDailyMetrics {
 
   // Calculate if goals are achieved
   UserDailyMetrics calculateAchievements() {
-    // 80% completion threshold for more achievable streaks
+    // Achievement thresholds for more achievable streaks
     final stepsAchieved = steps >= (stepsGoal * 0.8); // 80% of steps goal
     final caloriesAchieved = caloriesConsumed <= (caloriesGoal * 1.2) && caloriesConsumed > 0; // Allow 20% over calorie goal
-    final sleepAchieved = sleepHours >= (sleepGoal * 0.8); // 80% of sleep goal
+    final caloriesBurnedAchieved = caloriesBurned >= (caloriesBurnedGoal * 0.8); // 80% of active calorie burn goal
+    final sleepAchieved = sleepHours >= (sleepGoal * 0.7); // 70% of sleep goal (more forgiving)
     final waterAchieved = waterGlasses >= waterGoal; // Still track but optional for streak
     final nutritionAchieved = caloriesConsumed > 0; // Has logged food
 
-    // Water is now optional - only 4 goals required for streak
+    // 4 mandatory goals for streak: steps, calories consumed, calories burned, sleep
+    // Water is optional
     final allGoalsAchieved = stepsAchieved &&
                              caloriesAchieved &&
-                             sleepAchieved &&
-                             nutritionAchieved; // Water removed from requirement
+                             caloriesBurnedAchieved &&
+                             sleepAchieved;
     
     return copyWith(
       stepsAchieved: stepsAchieved,
       caloriesAchieved: caloriesAchieved,
+      caloriesBurnedAchieved: caloriesBurnedAchieved,
       sleepAchieved: sleepAchieved,
       waterAchieved: waterAchieved,
       nutritionAchieved: nutritionAchieved,
@@ -118,11 +125,13 @@ class UserDailyMetrics {
     if (weight != null) 'weight': weight,
     'steps_goal': stepsGoal,
     'calories_goal': caloriesGoal,
+    'calories_burned_goal': caloriesBurnedGoal,
     'sleep_goal': sleepGoal,
     'water_goal': waterGoal,
     'protein_goal': proteinGoal,
     'steps_achieved': stepsAchieved,
     'calories_achieved': caloriesAchieved,
+    'calories_burned_achieved': caloriesBurnedAchieved,
     'sleep_achieved': sleepAchieved,
     'water_achieved': waterAchieved,
     'nutrition_achieved': nutritionAchieved,
@@ -149,11 +158,13 @@ class UserDailyMetrics {
       weight: json['weight']?.toDouble(),
       stepsGoal: json['steps_goal'] ?? 10000,
       caloriesGoal: json['calories_goal'] ?? 2000,
+      caloriesBurnedGoal: json['calories_burned_goal'] ?? 500,
       sleepGoal: (json['sleep_goal'] ?? 8.0).toDouble(),
       waterGoal: json['water_goal'] ?? 8,
       proteinGoal: (json['protein_goal'] ?? 50).toDouble(),
       stepsAchieved: json['steps_achieved'] ?? false,
       caloriesAchieved: json['calories_achieved'] ?? false,
+      caloriesBurnedAchieved: json['calories_burned_achieved'] ?? false,
       sleepAchieved: json['sleep_achieved'] ?? false,
       waterAchieved: json['water_achieved'] ?? false,
       nutritionAchieved: json['nutrition_achieved'] ?? false,
@@ -182,11 +193,13 @@ class UserDailyMetrics {
     double? weight,
     int? stepsGoal,
     int? caloriesGoal,
+    int? caloriesBurnedGoal,
     double? sleepGoal,
     int? waterGoal,
     double? proteinGoal,
     bool? stepsAchieved,
     bool? caloriesAchieved,
+    bool? caloriesBurnedAchieved,
     bool? sleepAchieved,
     bool? waterAchieved,
     bool? nutritionAchieved,
@@ -211,11 +224,13 @@ class UserDailyMetrics {
       weight: weight ?? this.weight,
       stepsGoal: stepsGoal ?? this.stepsGoal,
       caloriesGoal: caloriesGoal ?? this.caloriesGoal,
+      caloriesBurnedGoal: caloriesBurnedGoal ?? this.caloriesBurnedGoal,
       sleepGoal: sleepGoal ?? this.sleepGoal,
       waterGoal: waterGoal ?? this.waterGoal,
       proteinGoal: proteinGoal ?? this.proteinGoal,
       stepsAchieved: stepsAchieved ?? this.stepsAchieved,
       caloriesAchieved: caloriesAchieved ?? this.caloriesAchieved,
+      caloriesBurnedAchieved: caloriesBurnedAchieved ?? this.caloriesBurnedAchieved,
       sleepAchieved: sleepAchieved ?? this.sleepAchieved,
       waterAchieved: waterAchieved ?? this.waterAchieved,
       nutritionAchieved: nutritionAchieved ?? this.nutritionAchieved,
@@ -227,10 +242,10 @@ class UserDailyMetrics {
     int goalsCompleted = 0;
     if (stepsAchieved) goalsCompleted++;
     if (caloriesAchieved) goalsCompleted++;
+    if (caloriesBurnedAchieved) goalsCompleted++;
     if (sleepAchieved) goalsCompleted++;
-    if (waterAchieved) goalsCompleted++;
-    if (nutritionAchieved) goalsCompleted++;
-    return (goalsCompleted / 5.0) * 100;
+    if (waterAchieved) goalsCompleted++; // Optional but counted in percentage
+    return (goalsCompleted / 5.0) * 100; // 5 total goals (4 mandatory + 1 optional)
   }
 }
 

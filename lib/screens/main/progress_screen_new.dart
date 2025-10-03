@@ -14,6 +14,7 @@ import '../../widgets/achievements/achievement_grid.dart';
 import '../../widgets/streak_calendar_widget.dart';
 import '../../widgets/milestone_progress_ring.dart';
 import '../../widgets/weight_progress_chart.dart';
+import '../../widgets/streak_checklist_widget.dart';
 import '../../services/achievement_checker.dart';
 import 'weight_details_screen.dart';
 // import 'dart:math' as math; // Not needed anymore - no random data
@@ -107,26 +108,11 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
           if (streakProvider.isInGracePeriod)
             _buildGracePeriodWarning(streakProvider),
 
-          Text(
-            'Today\'s Summary',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              fontSize: 24,
-            ),
-          ),
           const SizedBox(height: 20),
+          // Daily Goals Checklist - Main Feature
+          const StreakChecklistWidget(),
+          const SizedBox(height: 24),
 
-          // Centered Milestone Progress Ring - Main Feature (Moved to First)
-          Center(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 300),
-              child: const MilestoneProgressRing(size: 160, strokeWidth: 16),
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          _buildSummarySection(userProvider, nutritionProvider, healthProvider, streakProvider),
-          const SizedBox(height: 32),
           _buildWeeklyProgressChart(nutritionProvider, healthProvider, streakProvider),
           const SizedBox(height: 32),
 
@@ -185,86 +171,6 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
     );
   }
 
-
-  Widget _buildSummarySection(UserProvider userProvider, NutritionProvider nutritionProvider, HealthProvider healthProvider, StreakProvider streakProvider) {
-    final todayNutrition = nutritionProvider.todayNutrition;
-    final caloriesConsumed = todayNutrition.totalCalories;
-
-    // Get actual calories burned from health provider
-    final caloriesBurned = healthProvider.todayCaloriesBurned.toInt();
-    // Use StreakProvider for streak data
-    final activeStreak = streakProvider.currentStreak;
-
-    return Row(
-      children: [
-        Expanded(
-          child: _buildSummaryCard(
-            value: caloriesBurned.toString(),
-            label: 'Calories\nBurned',
-            color: AppTheme.primaryAccent,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildSummaryCard(
-            value: caloriesConsumed.toString(),
-            label: 'Calories\nConsumed',
-            color: Colors.blue,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildSummaryCard(
-            value: activeStreak.toString(),
-            label: 'Active\nStreak',
-            color: Colors.green,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSummaryCard({
-    required String value,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: color,
-              fontSize: 28,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppTheme.textSecondary,
-              height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildWeeklyProgressChart(NutritionProvider nutritionProvider, HealthProvider healthProvider, StreakProvider streakProvider) {
     // Calculate max value from both datasets to set dynamic Y-axis scale
@@ -883,7 +789,18 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
 
   Widget _buildMonthlyStats(StreakProvider streakProvider) {
     return FutureBuilder<Map<String, dynamic>>(
-      future: streakProvider.getMonthlyStats(),
+      future: streakProvider.getMonthlyStats().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => {
+          'month': DateTime.now().month,
+          'year': DateTime.now().year,
+          'daysCompleted': 0,
+          'totalSteps': 0,
+          'avgCalories': 0.0,
+          'avgSleep': 0.0,
+          'perfectDays': 0,
+        },
+      ),
       builder: (context, snapshot) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

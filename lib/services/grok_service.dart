@@ -40,6 +40,12 @@ Examples of clarifying questions for vague queries:
   }) async {
     print('🤖 GROK API: Starting API call for message: "${userMessage.substring(0, userMessage.length > 50 ? 50 : userMessage.length)}..."');
 
+    // Check if API key is empty
+    if (_apiKey.isEmpty) {
+      print('🤖 GROK API: API key not configured - returning setup instructions');
+      return _getApiKeySetupInstructions();
+    }
+
     // Check for vague queries first (but only if no conversation history)
     if ((conversationHistory == null || conversationHistory.isEmpty) && _isVagueQuery(userMessage)) {
       print('🤖 GROK API: Detected vague query, returning clarifying question');
@@ -228,6 +234,42 @@ Example: "I've hit a plateau in my weight loss"''';
 • Your experience level
 
 Example: "I need a strength training plan for beginners"''';
+  }
+
+  String _getApiKeySetupInstructions() {
+    return '''## 🤖 AI Coach Setup Required
+
+To enable the AI Coach feature, you need to configure your Groq API key.
+
+**📝 Quick Setup Steps:**
+
+1. **Get your FREE API key:**
+   • Visit https://console.groq.com/
+   • Sign up or log in (it's free!)
+   • Go to API Keys section
+   • Create a new API key
+
+2. **Add the key to your app:**
+   • Open `/lib/config/api_config.dart`
+   • Replace `YOUR_GROQ_API_KEY_HERE` with your actual key
+   • Restart the app
+
+**✨ Why Groq?**
+• Fast AI responses (< 1 second)
+• Generous free tier
+• Privacy-focused
+• High-quality fitness advice
+
+**💪 What you'll get:**
+• Personalized workout plans
+• Nutrition guidance
+• Progress tracking tips
+• Motivational support
+• Expert fitness knowledge
+
+**Need help?** The setup takes less than 2 minutes and unlocks powerful AI coaching features tailored to your fitness journey!
+
+Meanwhile, you can still use the app's tracking features and view your progress. 📊''';
   }
 
   String _buildContextMessage(Map<String, dynamic> userContext) {

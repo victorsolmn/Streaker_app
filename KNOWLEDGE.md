@@ -4,6 +4,7 @@ This document contains important information about the Streaker fitness tracking
 
 ## Latest Version: 1.0.10 (Build 12)
 Released: September 29, 2025
+Last Deployed: September 30, 2025 (Successfully installed on Android device R5CT32TLWGB)
 
 ## Recent Updates and Fixes
 
@@ -118,6 +119,9 @@ Released: September 29, 2025
 - **Min SDK**: API 26 (Android 8.0)
 - **Target SDK**: API 36
 - **AAB File**: Available on Desktop as `streaker_v1.0.10_build12.aab`
+- **APK Size**: 61.3MB (Release build)
+- **Last Test Device**: Samsung SM S908E (R5CT32TLWGB)
+- **Last Successful Installation**: September 30, 2025
 
 ### iOS (App Store)
 - **Bundle ID**: com.streaker.streaker
@@ -214,5 +218,6 @@ Released: September 29, 2025
 - [ ] Community features
 
 ---
-Last Updated: September 29, 2025
+Last Updated: September 30, 2025
 Version: 1.0.10
+Deployment Status: ✅ Successfully deployed to test device
