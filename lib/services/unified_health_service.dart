@@ -170,28 +170,202 @@ class UnifiedHealthService {
   Future<bool> _checkHealthKitAvailability() async {
     try {
       _log('Checking HealthKit availability...');
-      
+
       // Create permissions array matching health types length
       final permissions = List<HealthDataAccess>.filled(
-        _healthTypes.length, 
+        _healthTypes.length,
         HealthDataAccess.READ,
       );
-      
+
       // Check if we have permissions
       bool? hasPermissions = await _health.hasPermissions(
         _healthTypes,
         permissions: permissions,
       );
-      
+
       _log('HealthKit permissions status: $hasPermissions');
-      
+
       return hasPermissions == true;
     } catch (e) {
       _log('ERROR: HealthKit check failed: $e');
       return false;
     }
   }
-  
+
+  /// iOS-specific diagnostic method to identify HealthKit data sync issues
+  /// Returns detailed report of HealthKit status and data availability
+  Future<Map<String, dynamic>> runIOSHealthKitDiagnostics() async {
+    if (!Platform.isIOS) {
+      return {
+        'error': 'This diagnostic is only for iOS',
+        'platform': Platform.operatingSystem,
+      };
+    }
+
+    Map<String, dynamic> diagnosticReport = {
+      'timestamp': DateTime.now().toIso8601String(),
+      'platform': 'iOS',
+      'permissions': {},
+      'dataAvailability': {},
+      'sampleData': {},
+      'errors': [],
+    };
+
+    try {
+      // 1. Check overall HealthKit availability
+      _log('🔍 iOS DIAGNOSTIC: Starting HealthKit diagnostics...');
+
+      final permissions = List<HealthDataAccess>.filled(
+        _healthTypes.length,
+        HealthDataAccess.READ,
+      );
+
+      bool? hasPermissions = await _health.hasPermissions(
+        _healthTypes,
+        permissions: permissions,
+      );
+
+      diagnosticReport['permissions']['overall'] = hasPermissions ?? false;
+      _log('📋 Overall permissions: ${hasPermissions ?? false}');
+
+      // 2. Check individual permission status for each health type
+      for (var healthType in _healthTypes) {
+        try {
+          bool? typePermission = await _health.hasPermissions(
+            [healthType],
+            permissions: [HealthDataAccess.READ],
+          );
+          diagnosticReport['permissions'][healthType.name] = typePermission ?? false;
+          _log('  ${healthType.name}: ${typePermission ?? false}');
+        } catch (e) {
+          diagnosticReport['errors'].add('Permission check failed for ${healthType.name}: $e');
+        }
+      }
+
+      // 3. Test actual data fetching for today
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+
+      _log('📊 Testing data fetching for today (${startOfDay.toString()})...');
+
+      // Test Steps
+      try {
+        List<HealthDataPoint> stepsData = await _health.getHealthDataFromTypes(
+          types: [HealthDataType.STEPS],
+          startTime: startOfDay,
+          endTime: now,
+        );
+        diagnosticReport['dataAvailability']['STEPS'] = stepsData.length;
+        if (stepsData.isNotEmpty) {
+          int totalSteps = 0;
+          for (var point in stepsData) {
+            if (point.value is NumericHealthValue) {
+              totalSteps += (point.value as NumericHealthValue).numericValue.toInt();
+            }
+          }
+          diagnosticReport['sampleData']['STEPS'] = totalSteps;
+          _log('  Steps: $totalSteps (${stepsData.length} data points)');
+        } else {
+          _log('  ⚠️ Steps: No data available');
+        }
+      } catch (e) {
+        diagnosticReport['errors'].add('Steps fetch failed: $e');
+        _log('  ❌ Steps fetch error: $e');
+      }
+
+      // Test Active Calories
+      try {
+        List<HealthDataPoint> caloriesData = await _health.getHealthDataFromTypes(
+          types: [HealthDataType.ACTIVE_ENERGY_BURNED],
+          startTime: startOfDay,
+          endTime: now,
+        );
+        diagnosticReport['dataAvailability']['ACTIVE_ENERGY_BURNED'] = caloriesData.length;
+        if (caloriesData.isNotEmpty) {
+          double totalCalories = 0;
+          for (var point in caloriesData) {
+            if (point.value is NumericHealthValue) {
+              totalCalories += (point.value as NumericHealthValue).numericValue;
+            }
+          }
+          diagnosticReport['sampleData']['ACTIVE_ENERGY_BURNED'] = totalCalories.toStringAsFixed(1);
+          _log('  Calories: ${totalCalories.toStringAsFixed(1)} (${caloriesData.length} data points)');
+        } else {
+          _log('  ⚠️ Calories: No data available');
+        }
+      } catch (e) {
+        diagnosticReport['errors'].add('Calories fetch failed: $e');
+        _log('  ❌ Calories fetch error: $e');
+      }
+
+      // Test Heart Rate
+      try {
+        List<HealthDataPoint> heartRateData = await _health.getHealthDataFromTypes(
+          types: [HealthDataType.HEART_RATE, HealthDataType.RESTING_HEART_RATE],
+          startTime: startOfDay,
+          endTime: now,
+        );
+        diagnosticReport['dataAvailability']['HEART_RATE'] = heartRateData.length;
+        if (heartRateData.isNotEmpty) {
+          var latestHR = heartRateData.last;
+          if (latestHR.value is NumericHealthValue) {
+            int hr = (latestHR.value as NumericHealthValue).numericValue.toInt();
+            diagnosticReport['sampleData']['HEART_RATE'] = hr;
+            _log('  Heart Rate: $hr bpm (${heartRateData.length} data points)');
+          }
+        } else {
+          _log('  ⚠️ Heart Rate: No data available');
+        }
+      } catch (e) {
+        diagnosticReport['errors'].add('Heart Rate fetch failed: $e');
+        _log('  ❌ Heart Rate fetch error: $e');
+      }
+
+      // Test Sleep (yesterday to today to ensure we get last night's sleep)
+      try {
+        final yesterday = startOfDay.subtract(Duration(days: 1));
+        List<HealthDataPoint> sleepData = await _health.getHealthDataFromTypes(
+          types: [
+            HealthDataType.SLEEP_ASLEEP,
+            HealthDataType.SLEEP_AWAKE,
+            HealthDataType.SLEEP_IN_BED,
+          ],
+          startTime: yesterday,
+          endTime: now,
+        );
+        diagnosticReport['dataAvailability']['SLEEP'] = sleepData.length;
+        if (sleepData.isNotEmpty) {
+          double asleepMinutes = 0;
+          for (var point in sleepData) {
+            if (point.type == HealthDataType.SLEEP_ASLEEP) {
+              asleepMinutes += point.dateTo.difference(point.dateFrom).inMinutes.toDouble();
+            }
+          }
+          double sleepHours = asleepMinutes / 60;
+          diagnosticReport['sampleData']['SLEEP'] = sleepHours.toStringAsFixed(2);
+          _log('  Sleep: ${sleepHours.toStringAsFixed(2)} hours (${sleepData.length} data points)');
+        } else {
+          _log('  ⚠️ Sleep: No data available');
+        }
+      } catch (e) {
+        diagnosticReport['errors'].add('Sleep fetch failed: $e');
+        _log('  ❌ Sleep fetch error: $e');
+      }
+
+      _log('✅ iOS DIAGNOSTIC: Completed');
+      _log('📊 Summary:');
+      _log('  Permissions granted: ${diagnosticReport['permissions']['overall']}');
+      _log('  Data points found: ${diagnosticReport['dataAvailability']}');
+      _log('  Errors encountered: ${diagnosticReport['errors'].length}');
+
+    } catch (e) {
+      diagnosticReport['errors'].add('Diagnostic failed: $e');
+      _log('❌ iOS DIAGNOSTIC: Failed with error: $e');
+    }
+
+    return diagnosticReport;
+  }
+
   // Check Health Connect availability (Android)
   Future<bool> _checkHealthConnectAvailability() async {
     try {
@@ -699,12 +873,40 @@ class UnifiedHealthService {
         var regularHeartRateData = heartRateData.where((point) => point.type == HealthDataType.HEART_RATE).toList();
         if (regularHeartRateData.isNotEmpty) {
           regularHeartRateData.sort((a, b) => b.dateFrom.compareTo(a.dateFrom));
-          for (var point in regularHeartRateData.take(3)) {
-            _log('Heart rate entry: ${(point.value as NumericHealthValue).numericValue} bpm at ${point.dateFrom}');
-          }
-          if (regularHeartRateData.first.value is NumericHealthValue) {
-            healthData['heartRate'] = (regularHeartRateData.first.value as NumericHealthValue).numericValue.toInt();
-            _log('Latest heart rate: ${healthData['heartRate']} bpm');
+
+          if (Platform.isIOS) {
+            // For iOS, calculate average heart rate from today's readings
+            var todayHeartRateData = regularHeartRateData.where((point) =>
+              point.dateFrom.isAfter(midnight) && point.dateFrom.isBefore(now)
+            ).toList();
+
+            if (todayHeartRateData.isNotEmpty) {
+              double totalHR = 0;
+              int count = 0;
+              for (var point in todayHeartRateData) {
+                if (point.value is NumericHealthValue) {
+                  totalHR += (point.value as NumericHealthValue).numericValue;
+                  count++;
+                }
+              }
+              if (count > 0) {
+                healthData['heartRate'] = (totalHR / count).round();
+                _log('iOS Average heart rate: ${healthData['heartRate']} bpm (from $count readings)');
+              }
+            } else if (regularHeartRateData.first.value is NumericHealthValue) {
+              // Fallback to latest if no data from today
+              healthData['heartRate'] = (regularHeartRateData.first.value as NumericHealthValue).numericValue.toInt();
+              _log('Using latest heart rate (no data from today): ${healthData['heartRate']} bpm');
+            }
+          } else {
+            // For Android, use latest reading
+            for (var point in regularHeartRateData.take(3)) {
+              _log('Heart rate entry: ${(point.value as NumericHealthValue).numericValue} bpm at ${point.dateFrom}');
+            }
+            if (regularHeartRateData.first.value is NumericHealthValue) {
+              healthData['heartRate'] = (regularHeartRateData.first.value as NumericHealthValue).numericValue.toInt();
+              _log('Latest heart rate: ${healthData['heartRate']} bpm');
+            }
           }
         } else {
           _log('No heart rate data found');
@@ -797,9 +999,11 @@ class UnifiedHealthService {
           ? [HealthDataType.SLEEP_ASLEEP, HealthDataType.SLEEP_AWAKE, HealthDataType.SLEEP_IN_BED]
           : [HealthDataType.SLEEP_ASLEEP];
 
+        // Fetch sleep data from yesterday to now to get last night's sleep
+        final yesterday = now.subtract(Duration(days: 1));
         List<HealthDataPoint> sleepData = await _health.getHealthDataFromTypes(
           types: sleepTypes,
-          startTime: now.subtract(Duration(hours: 24)),
+          startTime: yesterday,
           endTime: now,
         );
 
@@ -807,11 +1011,20 @@ class UnifiedHealthService {
 
         if (Platform.isIOS) {
           // For iOS, calculate actual sleep time more accurately
+          // Only consider sleep sessions that ended on the current day (last night's sleep)
           double asleepMinutes = 0;
           double awakeMinutes = 0;
           double inBedMinutes = 0;
 
-          for (var point in sleepData) {
+          // Group sleep sessions by their end time to identify last night's sleep
+          var lastNightSleepData = sleepData.where((point) {
+            // Consider sleep that ended after midnight of today
+            return point.dateTo.isAfter(midnight);
+          }).toList();
+
+          _log('Last night sleep data points: ${lastNightSleepData.length}');
+
+          for (var point in lastNightSleepData) {
             // For iOS, sleep data points represent time periods (from dateFrom to dateTo)
             double durationMinutes = point.dateTo.difference(point.dateFrom).inMinutes.toDouble();
 

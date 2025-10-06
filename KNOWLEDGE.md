@@ -198,6 +198,60 @@ Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracki
 - Must re-request permissions when adding new data types
 - Platform-specific code for fetching different metrics
 
+### 5. iOS HealthKit Data Priority Fix (October 2025)
+**Problem:** iOS app displaying cached Android data (3111 steps, 67 HR, 7.4 sleep) instead of real-time HealthKit data, despite all permissions being granted
+
+**Root Cause:** Data loading sequence error where Supabase cache was loaded BEFORE HealthKit data, and then HealthKit data couldn't overwrite the cached values due to conditional update logic
+
+**Solution:** Implemented comprehensive Data Priority System
+- Added `DataPriority` enum with explicit hierarchy: `liveHealthData > supabaseCache > localStorage > noData`
+- Modified `updateMetricsFromHealth()` to set `liveHealthData` priority when receiving health data
+- Modified `loadHealthDataFromSupabase()` to block Supabase load if live data already exists
+- Changed initialization order in `main_screen.dart`: Initialize → Connect → Fetch → Supabase (as fallback)
+- Added comprehensive debug logging with `📊 [DataPriority]` prefix
+
+**Key Features:**
+- Explicit priority hierarchy prevents data source conflicts
+- Early exit pattern in Supabase load prevents accidental overwrites
+- Platform-agnostic design works for both iOS HealthKit and Android Health Connect
+- Preserves offline mode functionality and cross-platform sync
+- Non-breaking change - Android functionality completely preserved
+
+**Files Modified:**
+- `/lib/providers/health_provider.dart` - Added DataPriority enum and priority checking (~40 lines)
+- `/lib/screens/main/main_screen.dart` - Reordered initialization sequence (~35 lines)
+
+**Technical Implementation:**
+```dart
+enum DataPriority {
+  liveHealthData,    // HIGHEST - from HealthKit/Health Connect
+  supabaseCache,     // MEDIUM - cached database data
+  localStorage,      // LOWEST - SharedPreferences fallback
+  noData,            // INITIAL STATE
+}
+
+// Priority check in loadHealthDataFromSupabase()
+if (_currentDataPriority == DataPriority.liveHealthData) {
+  debugPrint('📊 [DataPriority] BLOCKING Supabase load');
+  return;  // Early exit prevents overwriting
+}
+```
+
+**Expected Behavior After Fix:**
+- **iOS/Android with permissions**: Live health data displayed, Supabase blocked
+- **Offline/No permissions**: Supabase cache acts as fallback
+- **Cross-platform**: Yesterday's data from other device shown correctly
+
+**Documentation:**
+- `/Users/Vicky/Desktop/Streaker/IOS_HEALTHKIT_REQUEST_RESPONSE_LOGS.md` - Complete log analysis
+- `/Users/Vicky/Desktop/Streaker/IOS_DATA_PRIORITY_IMPLEMENTATION_SUMMARY.md` - Implementation details
+- `/Users/Vicky/Desktop/Streaker/IOS_HEALTHKIT_ROOT_CAUSE_REPORT.md` - Root cause analysis
+
+**Deployment:**
+- ✅ Built iOS app in Release mode
+- ✅ Installed to iPhone (00008140-0014149E2082201C)
+- ✅ Ready for user testing
+
 ## OTP Authentication Implementation (January 2025)
 
 ### Overview

@@ -121,36 +121,42 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       // Load and sync health data
       final healthProvider = Provider.of<HealthProvider>(context, listen: false);
 
-      // FIRST: Load existing data from Supabase (before any initialization)
-      debugPrint('MainScreen: Loading existing data from Supabase...');
-      await healthProvider.loadHealthDataFromSupabase();
-
-      // Check mounted after async operation
-      if (!mounted) return;
-
-      // Initialize health provider if not already done
+      // 🔥 CRITICAL CHANGE FOR iOS FIX: Changed initialization order
+      // FIRST: Initialize health provider (sets up HealthKit/Health Connect)
       if (!healthProvider.isInitialized) {
+        debugPrint('📊 [MainScreen] Initializing health provider...');
         await healthProvider.initialize();
       }
 
       // Check mounted after async operation
       if (!mounted) return;
 
-      // Smart permission check: Auto-connect if permissions already exist
-      debugPrint('MainScreen: Performing smart permission check...');
+      // SECOND: Auto-connect if permissions already exist and fetch LIVE data
+      debugPrint('📊 [MainScreen] Performing smart permission check...');
       final autoConnected = await healthProvider.healthService.checkAndAutoConnect();
       if (autoConnected) {
-        debugPrint('MainScreen: ✅ Auto-connected to health source!');
+        debugPrint('📊 [MainScreen] ✅ Auto-connected to health source!');
 
         // IMPORTANT: Immediately sync health data after successful connection
-        debugPrint('MainScreen: Fetching health data after auto-connect...');
+        // This fetches LIVE data from HealthKit/Health Connect
+        debugPrint('📊 [MainScreen] Fetching LIVE health data after auto-connect...');
         await healthProvider.syncWithHealth();
 
-        // Save the fetched data to Supabase
+        // Save the live data to Supabase
         await healthProvider.saveHealthDataToSupabase();
+
+        debugPrint('📊 [MainScreen] Live health data priority set - Supabase will NOT override');
       } else {
-        debugPrint('MainScreen: No existing permissions found, manual connection required');
+        debugPrint('📊 [MainScreen] No existing permissions found, manual connection required');
       }
+
+      // Check mounted after async operation
+      if (!mounted) return;
+
+      // THIRD: Load from Supabase ONLY as fallback if no live data was fetched
+      // The loadHealthDataFromSupabase() method now checks data priority and won't overwrite live data
+      debugPrint('📊 [MainScreen] Attempting Supabase load (will be blocked if live data exists)...');
+      await healthProvider.loadHealthDataFromSupabase();
 
       // Check mounted after async operation
       if (!mounted) return;

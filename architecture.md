@@ -93,6 +93,12 @@ lib/
 - Aggregates data from multiple sources
 - Handles permission management
 - 5-minute sync interval to Supabase
+- **Data Priority System** (October 2025):
+  - Explicit hierarchy: `liveHealthData > supabaseCache > localStorage > noData`
+  - Prevents Supabase cache from overwriting live health data
+  - Platform-agnostic design for iOS HealthKit and Android Health Connect
+  - Early exit pattern in `loadHealthDataFromSupabase()` when live data exists
+  - Ensures real-time device data always takes precedence
 
 **NutritionProvider**
 - Tracks food consumption
@@ -128,14 +134,25 @@ lib/
 
 ### 3. Data Flow Patterns
 
-#### Health Data Flow
+#### Health Data Flow (Updated October 2025)
 ```
-Device Sensors
+Device Sensors (HealthKit/Health Connect)
     → UnifiedHealthService
     → HealthProvider
+    ↓
+[Data Priority Check]
+    ├─ If liveHealthData exists → Block Supabase load
+    └─ If noData/localStorage → Allow Supabase load
+    ↓
     → RealtimeSyncService
     → Supabase (health_metrics)
     → UI Updates
+
+Initialization Sequence:
+1. Initialize health provider
+2. Auto-connect if permissions exist
+3. Fetch LIVE health data (sets liveHealthData priority)
+4. Attempt Supabase load (blocked if live data exists)
 ```
 
 #### Nutrition Data Flow

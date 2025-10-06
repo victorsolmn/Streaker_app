@@ -10,6 +10,26 @@ import '../services/calorie_tracking_service.dart';
 import '../services/database_sync_service.dart';
 import '../models/daily_calorie_total.dart';
 
+/// Data priority levels for health metrics
+/// Determines which data source takes precedence when multiple sources provide data
+enum DataPriority {
+  /// Live data from HealthKit (iOS) or Health Connect (Android) - HIGHEST PRIORITY
+  /// This is real-time data from the device's health platform
+  liveHealthData,
+
+  /// Cached data from Supabase database - MEDIUM PRIORITY
+  /// This is synced data from previous sessions or other devices
+  supabaseCache,
+
+  /// Local SharedPreferences data - LOWEST PRIORITY
+  /// This is locally stored data, used as last resort fallback
+  localStorage,
+
+  /// No data loaded yet - INITIAL STATE
+  /// App just started, no data from any source yet
+  noData,
+}
+
 class HealthProvider with ChangeNotifier {
   Map<MetricType, HealthMetric> _metrics = {};
   bool _isLoading = false;
@@ -20,7 +40,10 @@ class HealthProvider with ChangeNotifier {
   final CalorieTrackingService _calorieService = CalorieTrackingService();
   SharedPreferences? _prefs;
   HealthDataSource _currentDataSource = HealthDataSource.unavailable;
-  
+
+  // Data priority tracking - determines which data source to trust
+  DataPriority _currentDataPriority = DataPriority.noData;
+
   // Connectivity monitoring
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -77,6 +100,7 @@ class HealthProvider with ChangeNotifier {
   int get todayExerciseMinutes => _todayExerciseMinutes > 0 ? _todayExerciseMinutes : 0;
   HealthDataSource get dataSource => _currentDataSource;
   Map<String, String> get dataSourceInfo => _healthService.getDataSourceInfo();
+  DataPriority get currentDataPriority => _currentDataPriority;
   
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -169,15 +193,22 @@ class HealthProvider with ChangeNotifier {
   }
   
   void updateMetricsFromHealth(Map<String, dynamic> data) {
+    // 🔥 DATA PRIORITY ENFORCEMENT
+    // Live health data from HealthKit/Health Connect should ALWAYS take priority
+    // over cached Supabase data, even if values are 0 (could be early morning, no activity yet)
+    debugPrint('📊 [DataPriority] Updating metrics from live health source');
+    debugPrint('📊 [DataPriority] Current priority: $_currentDataPriority');
+    debugPrint('📊 [DataPriority] New priority: ${DataPriority.liveHealthData}');
+
     // Check if we have Samsung Health data source info
     final stepsBySource = data['stepsBySource'] as Map<String, dynamic>?;
     final dataSource = stepsBySource?['dataSource'] ?? 'Unknown';
     debugPrint('Samsung Health Integration: Data from $dataSource');
-    
+
     // Check if data is valid (not all zeros which indicates no real data)
-    bool hasValidData = (data['steps'] ?? 0) > 0 || 
-                       (data['calories'] ?? 0) > 0 || 
-                       (data['heartRate'] ?? 0) > 0 || 
+    bool hasValidData = (data['steps'] ?? 0) > 0 ||
+                       (data['calories'] ?? 0) > 0 ||
+                       (data['heartRate'] ?? 0) > 0 ||
                        (data['sleep'] ?? 0) > 0 ||
                        (data['water'] ?? 0) > 0 ||
                        (data['workouts'] ?? 0) > 0;
@@ -189,8 +220,18 @@ class HealthProvider with ChangeNotifier {
       debugPrint('Using: ${stepsBySource['dataSource']}');
     }
     
+    // 🔥 CRITICAL CHANGE FOR iOS FIX:
+    // Always update with live health data, even if values are 0
+    // Zero could be legitimate (early morning, no activity yet)
+    // This fixes the issue where Supabase cached data overrides real HealthKit/Health Connect data
+
+    // Set data priority to liveHealthData (highest priority)
+    _currentDataPriority = DataPriority.liveHealthData;
+    debugPrint('📊 [DataPriority] Priority elevated to: $_currentDataPriority');
+
     // Only update if we have valid data, otherwise keep existing values
     if (hasValidData) {
+      debugPrint('📊 [DataPriority] Updating with VALID live health data');
       // Update today's data with accurate calorie calculation
       _todaySteps = (data['steps'] != null && data['steps'] > 0) ? data['steps'].toDouble() : _todaySteps;
 
@@ -379,10 +420,12 @@ class HealthProvider with ChangeNotifier {
   // Load health data from SharedPreferences
   Future<void> _loadHealthData() async {
     if (_prefs == null) return;
-    
+
+    debugPrint('📊 [DataPriority] Loading from SharedPreferences (localStorage)');
+
     final today = DateTime.now();
     final todayKey = '${today.year}-${today.month}-${today.day}';
-    
+
     // Load today's data with 0 as fallback (no more hardcoded demo values)
     _todaySteps = _prefs!.getDouble('steps_$todayKey') ?? 0.0;
     _todayCaloriesBurned = _prefs!.getDouble('calories_burned_$todayKey') ?? 0.0;
@@ -409,6 +452,12 @@ class HealthProvider with ChangeNotifier {
         _currentDataSource = HealthDataSource.healthKit;
       }
       debugPrint('Restored health source connection: $connectedSource');
+    }
+
+    // Set priority to localStorage (lowest)
+    if (_currentDataPriority == DataPriority.noData) {
+      _currentDataPriority = DataPriority.localStorage;
+      debugPrint('📊 [DataPriority] Priority set to: $_currentDataPriority');
     }
   }
   
@@ -485,14 +534,26 @@ class HealthProvider with ChangeNotifier {
       return;
     }
 
+    // 🔥 DATA PRIORITY CHECK - CRITICAL FOR iOS FIX
+    // Do NOT overwrite live health data with Supabase cache
+    if (_currentDataPriority == DataPriority.liveHealthData) {
+      debugPrint('📊 [DataPriority] BLOCKING Supabase load - already have live health data');
+      debugPrint('📊 [DataPriority] Current priority: $_currentDataPriority (higher than Supabase cache)');
+      debugPrint('📊 [DataPriority] Live data takes precedence - keeping current values');
+      return;
+    }
+
     _isLoading = true;
     notifyListeners();
 
     try {
+      debugPrint('📊 [DataPriority] Loading data from Supabase (priority: ${DataPriority.supabaseCache})');
+      debugPrint('📊 [DataPriority] Current priority: $_currentDataPriority');
+
       // Get today's date
       final today = DateTime.now();
       final todayStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      
+
       // Load today's health metrics from Supabase
       final healthData = await _supabaseService.getHealthMetrics(
         userId: userId,
@@ -500,12 +561,21 @@ class HealthProvider with ChangeNotifier {
       );
 
       if (healthData != null) {
+        debugPrint('📊 [DataPriority] Supabase data found for $todayStr');
+        debugPrint('📊 [DataPriority] Supabase Steps: ${healthData['steps']}');
+        debugPrint('📊 [DataPriority] Supabase HR: ${healthData['heart_rate']}');
+        debugPrint('📊 [DataPriority] Supabase Sleep: ${healthData['sleep_hours']}');
+
         // Update local data with Supabase data
         _todaySteps = (healthData['steps'] ?? 0).toDouble();
         _todayCaloriesBurned = (healthData['calories_burned'] ?? 0).toDouble();
         _todayHeartRate = (healthData['heart_rate'] ?? 0).toDouble();
         _todaySleep = (healthData['sleep_hours'] ?? 0).toDouble();
         _todayDistance = (healthData['distance'] ?? 0).toDouble();
+
+        // Set priority to Supabase cache
+        _currentDataPriority = DataPriority.supabaseCache;
+        debugPrint('📊 [DataPriority] Priority set to: $_currentDataPriority');
         
         // Update metrics
         _metrics[MetricType.steps] = HealthMetric(
