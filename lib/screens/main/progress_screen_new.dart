@@ -44,12 +44,7 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
     );
     _animationController.forward();
 
-    // Load fresh data when screen opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final streakProvider = context.read<StreakProvider>();
-      streakProvider.loadTodayMetrics();
-      streakProvider.loadUserStreak();
-    });
+    // Data is loaded via provider initialization - no need for duplicate loads here
   }
 
   @override
@@ -102,10 +97,9 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
   Widget _buildProgressTab(UserProvider userProvider, NutritionProvider nutritionProvider, HealthProvider healthProvider, StreakProvider streakProvider) {
     return RefreshIndicator(
       onRefresh: () async {
-        // Refresh all data
+        // Use new refresh() method with other providers
         await Future.wait([
-          streakProvider.loadTodayMetrics(),
-          streakProvider.loadUserStreak(),
+          streakProvider.refresh(),
           healthProvider.fetchMetrics(),
           nutritionProvider.loadDataFromSupabase(),
         ]);

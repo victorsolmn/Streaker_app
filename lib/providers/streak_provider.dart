@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/streak_model.dart';
 import '../services/supabase_service.dart';
 import '../services/database_sync_service.dart';
+import '../utils/streak_logger.dart';
 import 'health_provider.dart';
 import 'nutrition_provider.dart';
 import 'user_provider.dart';
@@ -21,7 +22,12 @@ class StreakProvider extends ChangeNotifier {
   // Loading states
   bool _isLoading = false;
   String? _error;
-  
+
+  // Debouncing for sync operations
+  DateTime? _lastSyncTime;
+  static const Duration _syncCooldown = Duration(seconds: 30);
+  bool _isSyncing = false;
+
   // Realtime subscription
   RealtimeChannel? _metricsSubscription;
   RealtimeChannel? _streakSubscription;
@@ -72,15 +78,20 @@ class StreakProvider extends ChangeNotifier {
       
       if (response != null) {
         _userStreak = UserStreak.fromJson(response);
+        StreakLogger.logLoaded(
+          currentStreak: _userStreak!.currentStreak,
+          longestStreak: _userStreak!.longestStreak,
+          source: 'database',
+        );
       } else {
         // Create initial streak record
         _userStreak = UserStreak(userId: userId);
         await _createInitialStreak();
       }
-      
+
       notifyListeners();
     } catch (e) {
-      debugPrint('Error loading streak: $e');
+      StreakLogger.logUpdateFailed('Failed to load streak data', e);
       _setError('Failed to load streak data');
     }
   }
@@ -156,20 +167,36 @@ class StreakProvider extends ChangeNotifier {
     NutritionProvider nutritionProvider,
     UserProvider userProvider,
   ) async {
+    // Check if sync is too soon
+    if (_lastSyncTime != null &&
+        DateTime.now().difference(_lastSyncTime!) < _syncCooldown) {
+      StreakLogger.logSyncSkipped(DateTime.now().difference(_lastSyncTime!));
+      return;
+    }
+
+    // Check if already syncing
+    if (_isSyncing) {
+      StreakLogger.logSyncInProgress();
+      return;
+    }
+
+    _isSyncing = true;
+    final stopwatch = Stopwatch()..start();
+
     try {
       final userId = _supabaseService.currentUser?.id;
       if (userId == null) return;
-      
+
       final profile = userProvider.profile;
       if (profile == null) return;
-      
+
       // Get current metrics or create new
       final today = DateTime.now();
       final metrics = _todayMetrics ?? UserDailyMetrics(
         userId: userId,
         date: today,
       );
-      
+
       // Update with health data
       final updatedMetrics = metrics.copyWith(
         steps: healthProvider.todaySteps.toInt(),
@@ -179,43 +206,68 @@ class StreakProvider extends ChangeNotifier {
         distance: healthProvider.todayDistance,
         waterGlasses: healthProvider.todayWater,
         workouts: healthProvider.todayWorkouts,
-        
+
         // Update with nutrition data from today's entries
         caloriesConsumed: nutritionProvider.todayNutrition.totalCalories,
         protein: nutritionProvider.todayNutrition.totalProtein,
         carbs: nutritionProvider.todayNutrition.totalCarbs,
         fat: nutritionProvider.todayNutrition.totalFat,
         fiber: nutritionProvider.todayNutrition.totalFiber,
-        
+
         // Update with user goals
         stepsGoal: profile.dailyStepsTarget ?? 10000,
         caloriesGoal: profile.dailyCaloriesTarget ?? 2000,
         sleepGoal: profile.dailySleepTarget ?? 8.0,
         waterGoal: profile.dailyWaterTarget?.toInt() ?? 8,
         proteinGoal: nutritionProvider.proteinGoal.toDouble(),
-        
+
         // Update weight if available
         weight: profile.weight,
       );
-      
+
       // Calculate achievements
       final finalMetrics = updatedMetrics.calculateAchievements();
 
       // Save to Supabase
       await saveMetrics(finalMetrics);
 
-      // Trigger database sync to ensure everything is calculated correctly
-      // This will aggregate nutrition, recalculate goals, and update streaks
+      // Let database handle streak calculation
       final dbSync = DatabaseSyncService();
-      await dbSync.syncToday();
+      final result = await dbSync.syncToday();
 
-      // Reload updated data
-      await loadUserStreak();
-      await loadTodayMetrics();
-      
+      if (result != null) {
+        if (result['streak'] != null) {
+          final previousStreak = _userStreak?.currentStreak ?? 0;
+          _userStreak = UserStreak.fromJson(result['streak']);
+
+          if (previousStreak != _userStreak!.currentStreak) {
+            StreakLogger.logUpdated(
+              previousStreak: previousStreak,
+              newStreak: _userStreak!.currentStreak,
+              reason: 'goals achievement check',
+            );
+          }
+        }
+
+        if (result['health_metrics'] != null) {
+          _todayMetrics = UserDailyMetrics.fromJson(result['health_metrics']);
+        }
+      }
+
+      stopwatch.stop();
+      _lastSyncTime = DateTime.now();
+
+      StreakLogger.logSyncComplete(
+        currentStreak: currentStreak,
+        longestStreak: longestStreak,
+        syncTime: stopwatch.elapsed,
+      );
+
     } catch (e) {
-      debugPrint('Error syncing metrics: $e');
+      StreakLogger.logUpdateFailed('Sync from providers failed', e);
       _setError('Failed to sync metrics');
+    } finally {
+      _isSyncing = false;
     }
   }
   
@@ -253,14 +305,11 @@ class StreakProvider extends ChangeNotifier {
   Future<void> checkAndUpdateStreak() async {
     try {
       if (_todayMetrics == null || !_todayMetrics!.allGoalsAchieved) {
-        debugPrint('⚠️ Streak not updated: goals not achieved');
         return;
       }
 
       final userId = _supabaseService.currentUser?.id;
       if (userId == null) return;
-
-      debugPrint('🔥 All goals achieved! Triggering streak update...');
 
       // Use database function to ensure proper calculation
       final dbSync = DatabaseSyncService();
@@ -269,8 +318,14 @@ class StreakProvider extends ChangeNotifier {
       if (result != null) {
         // Update local data from database result
         if (result['streak'] != null) {
+          final previousStreak = _userStreak?.currentStreak ?? 0;
           _userStreak = UserStreak.fromJson(result['streak']);
-          debugPrint('✅ Streak updated via database: ${_userStreak?.currentStreak} days');
+
+          StreakLogger.logUpdated(
+            previousStreak: previousStreak,
+            newStreak: _userStreak!.currentStreak,
+            reason: 'manual streak check',
+          );
         }
 
         if (result['health_metrics'] != null) {
@@ -283,17 +338,16 @@ class StreakProvider extends ChangeNotifier {
         notifyListeners();
       } else {
         // Fallback: reload from database
-        debugPrint('⚠️ Database sync returned null, falling back to reload');
         await loadUserStreak();
       }
 
     } catch (e) {
-      debugPrint('❌ Error updating streak: $e');
+      StreakLogger.logUpdateFailed('Manual streak check failed', e);
       // Try fallback reload
       try {
         await loadUserStreak();
       } catch (e2) {
-        debugPrint('❌ Fallback reload also failed: $e2');
+        StreakLogger.logUpdateFailed('Fallback reload failed', e2);
       }
     }
   }
@@ -342,19 +396,18 @@ class StreakProvider extends ChangeNotifier {
   // Save to local storage
   Future<void> _saveToLocal(UserDailyMetrics metrics) async {
     if (_prefs == null) return;
-    
+
     final today = DateTime.now();
     final key = 'metrics_${today.year}_${today.month}_${today.day}';
-    
+
     await _prefs!.setInt('${key}_steps', metrics.steps);
     await _prefs!.setInt('${key}_calories', metrics.caloriesConsumed);
     await _prefs!.setDouble('${key}_sleep', metrics.sleepHours);
     await _prefs!.setInt('${key}_water', metrics.waterGlasses);
     await _prefs!.setBool('${key}_achieved', metrics.allGoalsAchieved);
-    
-    // Save current streak
-    await _prefs!.setInt('current_streak', _userStreak?.currentStreak ?? 0);
-    await _prefs!.setInt('longest_streak', _userStreak?.longestStreak ?? 0);
+
+    // REMOVED: SharedPreferences streak writes - database is single source of truth
+    // This was causing stale data to overwrite correct database values
   }
   
   // Setup realtime subscriptions
@@ -465,12 +518,21 @@ class StreakProvider extends ChangeNotifier {
     };
   }
   
+  /// Public refresh method for pull-to-refresh
+  Future<void> refresh() async {
+    await Future.wait([
+      loadTodayMetrics(),
+      loadUserStreak(),
+      loadRecentMetrics(),
+    ]);
+  }
+
   // Get grace period status message
   String getGracePeriodMessage() {
     if (!isInGracePeriod || currentStreak == 0) {
       return '';
     }
-    
+
     if (remainingGraceDays == 2) {
       return "Don't worry! You have 2 grace days to get back on track 💪";
     } else if (remainingGraceDays == 1) {
