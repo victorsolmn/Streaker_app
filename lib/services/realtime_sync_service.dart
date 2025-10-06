@@ -76,21 +76,21 @@ class RealtimeSyncService {
     onSyncStatusChanged?.call(true);
 
     try {
-      // First sync all local data to Supabase
+      // Sync local data to Supabase
       await Future.wait([
         _syncNutritionData(),
         _syncHealthMetrics(),
         _syncUserProfile(),
-        _syncStreaks(),
+        // REMOVED: _syncStreaks() - Database triggers handle streak updates automatically
       ]);
 
       debugPrint('✅ Local data synced to Supabase');
 
-      // NEW: Force database-level sync to recalculate everything
+      // Database-level sync recalculates goals and streaks automatically
       try {
         final dbSync = DatabaseSyncService();
         await dbSync.syncToday();
-        debugPrint('✅ Database sync completed - goals and streaks updated');
+        debugPrint('✅ Database sync completed - goals and streaks auto-calculated');
       } catch (e) {
         debugPrint('⚠️ Database sync failed (non-critical): $e');
       }
@@ -237,30 +237,10 @@ class RealtimeSyncService {
     }
   }
   
-  /// Sync streaks
-  Future<void> _syncStreaks() async {
-    try {
-      final userId = _supabase.currentUser?.id;
-      if (userId == null) return;
-      
-      final prefs = await SharedPreferences.getInstance();
-      
-      final currentStreak = prefs.getInt('current_streak') ?? 0;
-      final longestStreak = prefs.getInt('longest_streak') ?? 0;
-      
-      await _supabase.updateStreak(
-        userId: userId,
-        currentStreak: currentStreak,
-        longestStreak: longestStreak,
-      );
-      
-      debugPrint('🔥 Synced streaks: $currentStreak current, $longestStreak longest');
-    } catch (e) {
-      debugPrint('Error syncing streaks: $e');
-      _addToOfflineQueue('streaks', {'error': e.toString()});
-    }
-  }
-  
+  // REMOVED: _syncStreaks() method
+  // Streaks are now automatically calculated by database triggers.
+  // No manual sync needed - this was causing race conditions and stale data issues.
+
   /// Add operation to offline queue
   void _addToOfflineQueue(String type, Map<String, dynamic> data) {
     _offlineQueue.add({
@@ -293,9 +273,9 @@ class RealtimeSyncService {
           case 'profile':
             await _syncUserProfile();
             break;
-          case 'streaks':
-            await _syncStreaks();
-            break;
+          // REMOVED: case 'streaks' - no longer manually syncing streaks
+          default:
+            debugPrint('⚠️ Unknown offline operation type: ${operation['type']}');
         }
       } catch (e) {
         debugPrint('Error syncing offline operation: $e');
