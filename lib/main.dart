@@ -13,6 +13,8 @@ import 'services/daily_reset_service.dart';
 import 'services/permission_flow_manager.dart';
 import 'services/database_sync_service.dart';
 import 'services/background_sync_service.dart';
+import 'services/secure_storage_service.dart';
+import 'config/api_config.dart';
 // Using Supabase providers for cloud storage
 import 'providers/supabase_auth_provider.dart';
 import 'providers/supabase_nutrition_provider.dart';
@@ -48,6 +50,17 @@ void main() async {
 
   // Initialize Background Sync Service (WorkManager)
   await BackgroundSyncService.initialize();
+
+  // Initialize API keys securely from api_config.dart (gitignored file)
+  try {
+    await SecureStorageService().initializeApiKeys(
+      grokApiKey: ApiConfig.grokApiKey,
+      enableGrokApi: true,
+    );
+    debugPrint('✅ GROK API key initialized securely');
+  } catch (e) {
+    debugPrint('⚠️ GROK API key initialization failed: $e');
+  }
 
   // Initialize Firebase
   try {
