@@ -92,16 +92,11 @@ class StreakDisplayWidget extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: isActive ? AppTheme.primaryGradient : null,
-        color: !isActive 
-            ? (isDarkMode ? AppTheme.darkCardBackground : Colors.white)
-            : null,
+        gradient: AppTheme.primaryGradient, // Always use brand gradient
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: isActive 
-                ? AppTheme.primaryAccent.withOpacity(0.3)
-                : Colors.black.withOpacity(0.05),
+            color: AppTheme.primaryAccent.withOpacity(0.3),
             blurRadius: 15,
             offset: Offset(0, 5),
           ),
@@ -117,7 +112,7 @@ class StreakDisplayWidget extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.local_fire_department,
-                    color: isActive ? Colors.white : AppTheme.primaryAccent,
+                    color: Colors.white,
                     size: 32,
                   ),
                   SizedBox(width: 12),
@@ -127,18 +122,14 @@ class StreakDisplayWidget extends StatelessWidget {
                       Text(
                         'Current Streak',
                         style: TextStyle(
-                          color: isActive 
-                              ? Colors.white70
-                              : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+                          color: Colors.white.withOpacity(0.9),
                           fontSize: 14,
                         ),
                       ),
                       Text(
                         '$currentStreak days',
                         style: TextStyle(
-                          color: isActive 
-                              ? Colors.white
-                              : (isDarkMode ? Colors.white : Colors.black),
+                          color: Colors.white,
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
                         ),
@@ -163,18 +154,14 @@ class StreakDisplayWidget extends StatelessWidget {
                   Text(
                     'Today\'s Goals',
                     style: TextStyle(
-                      color: isActive 
-                          ? Colors.white70
-                          : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+                      color: Colors.white.withOpacity(0.9),
                       fontSize: 14,
                     ),
                   ),
                   Text(
                     '$goalsCompleted/5 completed',
                     style: TextStyle(
-                      color: isActive 
-                          ? Colors.white
-                          : AppTheme.primaryAccent,
+                      color: Colors.white,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -187,13 +174,11 @@ class StreakDisplayWidget extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: todayProgress / 100,
                   minHeight: 8,
-                  backgroundColor: isActive 
-                      ? Colors.white24
-                      : (isDarkMode ? Colors.grey[700] : Colors.grey[300]),
+                  backgroundColor: Colors.white.withOpacity(0.3),
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    goalsCompleted == 5 
+                    goalsCompleted == 5
                         ? AppTheme.successGreen
-                        : (isActive ? Colors.white : AppTheme.primaryAccent),
+                        : Colors.white,
                   ),
                 ),
               ),
@@ -207,59 +192,41 @@ class StreakDisplayWidget extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: remainingGraceDays == 1 
-                    ? AppTheme.errorRed.withOpacity(0.2)
-                    : Colors.orange.withOpacity(0.2),
+                color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: remainingGraceDays == 1 
-                      ? AppTheme.errorRed.withOpacity(0.5)
-                      : Colors.orange.withOpacity(0.5),
+                  color: Colors.white.withOpacity(0.3),
+                  width: 1,
                 ),
               ),
               child: Row(
                 children: [
                   Icon(
-                    remainingGraceDays == 1 ? Icons.warning : Icons.info_outline,
-                    color: remainingGraceDays == 1 ? AppTheme.errorRed : Colors.orange,
+                    Icons.info_outline,
+                    color: Colors.white,
                     size: 20,
                   ),
                   SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Grace Period Active',
-                          style: TextStyle(
-                            color: remainingGraceDays == 1 ? AppTheme.errorRed : Colors.orange,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                        Text(
-                          '$remainingGraceDays excuse ${remainingGraceDays == 1 ? 'day' : 'days'} remaining',
-                          style: TextStyle(
-                            color: isDarkMode ? Colors.white70 : Colors.black87,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      '$remainingGraceDays excuse ${remainingGraceDays == 1 ? 'day' : 'days'} remaining',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                   // Grace days visual indicator
                   Row(
                     children: List.generate(2, (index) => Container(
                       margin: EdgeInsets.only(left: 4),
-                      width: 12,
-                      height: 12,
+                      width: 10,
+                      height: 10,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: index < graceDaysUsed 
-                            ? AppTheme.errorRed
-                            : (remainingGraceDays == 1 && index == 1) 
-                                ? Colors.orange
-                                : Colors.grey.withOpacity(0.3),
+                        color: index < graceDaysUsed
+                            ? Colors.white.withOpacity(0.3)
+                            : Colors.white.withOpacity(0.7),
                       ),
                     )),
                   ),
@@ -273,9 +240,7 @@ class StreakDisplayWidget extends StatelessWidget {
           Text(
             message,
             style: TextStyle(
-              color: isActive 
-                  ? Colors.white
-                  : (isDarkMode ? Colors.white : Colors.black87),
+              color: Colors.white,
               fontSize: 16,
               fontWeight: FontWeight.w500,
             ),
@@ -368,18 +333,14 @@ class StreakDisplayWidget extends StatelessWidget {
       children: [
         Icon(
           icon,
-          color: isActive 
-              ? Colors.white70
-              : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+          color: Colors.white.withOpacity(0.9),
           size: 20,
         ),
         SizedBox(height: 4),
         Text(
           value,
           style: TextStyle(
-            color: isActive 
-                ? Colors.white
-                : (isDarkMode ? Colors.white : Colors.black),
+            color: Colors.white,
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
@@ -387,9 +348,7 @@ class StreakDisplayWidget extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: isActive 
-                ? Colors.white70
-                : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+            color: Colors.white.withOpacity(0.9),
             fontSize: 12,
           ),
         ),

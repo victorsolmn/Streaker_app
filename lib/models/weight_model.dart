@@ -2,12 +2,14 @@ import 'package:intl/intl.dart';
 
 class WeightEntry {
   final String id;
+  final String? userId;
   final double weight;
   final DateTime timestamp;
   final String? note;
 
   WeightEntry({
     required this.id,
+    this.userId,
     required this.weight,
     required this.timestamp,
     this.note,
@@ -23,6 +25,7 @@ class WeightEntry {
   factory WeightEntry.fromJson(Map<String, dynamic> json) {
     return WeightEntry(
       id: json['id'],
+      userId: json['user_id'],
       weight: json['weight'].toDouble(),
       timestamp: DateTime.parse(json['timestamp']),
       note: json['note'],

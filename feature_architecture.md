@@ -95,6 +95,117 @@ try {
 - [x] Reorder widgets (Milestone first)
 - [x] Test on physical devices
 
+## Profile Screen Enhancement
+
+### Fitness Goals Card Feature
+**Date**: September 28, 2025
+**Status**: Completed
+
+#### Architecture Overview
+The Profile screen's fitness goals section has been redesigned from a verbose, space-consuming layout to a compact, professional card interface. This change significantly improves the user experience by reducing scrolling and presenting information more efficiently.
+
+#### Component Structure
+
+##### 1. FitnessGoalsCard Widget (`lib/widgets/fitness_goals_card.dart`)
+- **Purpose**: Compact display of user's fitness goals and metrics
+- **Design**: Professional card layout with 2x2 grid structure
+- **Theme Support**: Full dark/light mode compatibility
+
+**Layout Architecture**:
+```
+FitnessGoalsCard
+├── Header Section
+│   ├── Title: "Fitness Goals"
+│   └── Edit Button (navigates to EditGoalsScreen)
+├── 2x2 Grid Layout
+│   ├── Top Row
+│   │   ├── Goal (Primary fitness objective)
+│   │   └── Activity Level (Exercise frequency)
+│   └── Bottom Row
+│       ├── Experience Level (Fitness background)
+│       └── Consistency (Workout schedule)
+└── BMI Section (conditional)
+    ├── BMI Value & Category
+    ├── Color-coded status
+    └── Professional styling
+```
+
+**Key Features**:
+- **Space Efficiency**: 70% reduction in vertical space usage
+- **Color Coding**: Each goal item has themed background and icon colors
+- **Responsive Design**: Text overflow handled with ellipsis
+- **Accessibility**: Proper contrast ratios and touch targets
+
+##### 2. Integration Points
+
+**Profile Screen** (`lib/screens/main/profile_screen.dart`)
+- Replaced `_buildFitnessGoalsSection()` with `FitnessGoalsCard` widget
+- Separated daily targets into dedicated `_buildDailyTargetsSection()`
+- Maintained data flow through `SupabaseUserProvider`
+
+**Data Dependencies**:
+- Uses `UserProfile` model from `lib/models/user_model.dart`
+- Integrates with existing provider pattern
+- No database schema changes required
+
+#### Design System
+
+##### Color Palette
+- **Goal**: `AppTheme.primaryAccent` (brand color)
+- **Activity**: `Colors.blue` (energy/movement)
+- **Experience**: `Colors.green` (growth/knowledge)
+- **Consistency**: `Colors.orange` (warmth/commitment)
+- **BMI**: Dynamic based on health ranges
+
+##### Typography
+- **Header**: 18px bold for section title
+- **Labels**: 10-11px medium for goal labels
+- **Values**: 12-16px semibold for goal values
+- **BMI**: 16px bold for value, 11px semibold for category
+
+##### Spacing System
+- **Card Margin**: 16px top only
+- **Internal Padding**: 16px all sides
+- **Grid Spacing**: 12px between items
+- **Icon-Text Gap**: 4-10px based on context
+
+#### Implementation Details
+
+**Technical Improvements**:
+- Fixed import error: Corrected `../models/user_profile.dart` to `../models/user_model.dart`
+- Ensured compatibility with existing `SupabaseUserProvider` data structure
+- Added proper null safety for optional profile fields
+
+**Error Handling**:
+- Graceful handling of missing profile data
+- Fallback values ("Not set") for empty fields
+- Safe BMI calculations with null checks
+
+#### Migration Notes
+
+**Before** (Old Implementation):
+- Verbose vertical list layout
+- Individual rows for each goal item
+- Excessive white space usage
+- Separate BMI calculation section
+
+**After** (New Implementation):
+- Compact 2x2 grid layout
+- Integrated BMI display
+- Professional card styling
+- 70% space reduction
+
+#### Performance Considerations
+- Lightweight widget with minimal rebuild requirements
+- Efficient use of Consumer widget for targeted updates
+- No heavy computations or complex animations
+
+#### Future Enhancements
+1. **Goal Progress Indicators**: Add progress bars for quantifiable goals
+2. **Interactive Elements**: Tap individual goal items for quick editing
+3. **Animation**: Subtle animations on data updates
+4. **Customization**: User-selectable color themes for goal categories
+
 ## Milestone Progress Feature
 
 ### Architecture

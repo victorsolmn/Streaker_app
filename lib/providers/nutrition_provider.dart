@@ -10,6 +10,7 @@ import '../services/nutrition_ai_service.dart';
 import '../services/indian_food_nutrition_service.dart';
 import '../services/realtime_sync_service.dart';
 import '../services/supabase_service.dart';
+import '../services/database_sync_service.dart';
 
 class NutritionEntry {
   final String id;
@@ -21,6 +22,7 @@ class NutritionEntry {
   final double fat;
   final double fiber;
   final DateTime timestamp;
+  final Map<String, dynamic>? metadata; // NEW: Metadata for source, confidence, etc.
 
   NutritionEntry({
     required this.id,
@@ -32,6 +34,7 @@ class NutritionEntry {
     required this.fat,
     this.fiber = 0.0,
     required this.timestamp,
+    this.metadata, // NEW: Optional metadata
   });
 
   Map<String, dynamic> toJson() {
@@ -45,6 +48,7 @@ class NutritionEntry {
       'fat': fat,
       'fiber': fiber,
       'timestamp': timestamp.toIso8601String(),
+      'metadata': metadata, // Include metadata in JSON
     };
   }
 
@@ -59,6 +63,7 @@ class NutritionEntry {
       fat: json['fat'].toDouble(),
       fiber: json['fiber']?.toDouble() ?? 0.0,
       timestamp: DateTime.parse(json['timestamp']),
+      metadata: json['metadata'] as Map<String, dynamic>?, // Parse metadata
     );
   }
 }
@@ -313,19 +318,39 @@ class NutritionProvider with ChangeNotifier {
     try {
       _entries.add(entry);
       await _saveNutritionData();
-      
+
       // Auto-sync to Supabase if user is logged in and online
       final userId = _supabaseService.currentUser?.id;
       if (userId != null && _isOnline) {
         debugPrint('NutritionProvider: Auto-syncing after adding entry');
         await _syncToSupabase();
+
+        // NEW: Trigger database-level sync to update health_metrics and streaks
+        await _triggerDatabaseSync();
       }
-      
+
       _setLoading(false);
       notifyListeners();
     } catch (e) {
       _setError('Failed to add nutrition entry');
       _setLoading(false);
+    }
+  }
+
+  /// Trigger database-level sync to aggregate nutrition and update goals/streaks
+  Future<void> _triggerDatabaseSync() async {
+    try {
+      final dbSync = DatabaseSyncService();
+      final result = await dbSync.syncToday();
+
+      if (result != null) {
+        debugPrint('✅ NutritionProvider: Database sync completed');
+        debugPrint('   Goals achieved: ${result['health_metrics']?['all_goals_achieved']}');
+        debugPrint('   Current streak: ${result['streak']?['current_streak']}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ NutritionProvider: Database sync failed (non-critical): $e');
+      // Non-critical error - triggers will handle it eventually
     }
   }
 
@@ -424,19 +449,27 @@ class NutritionProvider with ChangeNotifier {
     _setError(null);
 
     try {
+      // Remove from local state
       _entries.removeWhere((entry) => entry.id == entryId);
       await _saveNutritionData();
-      
-      // Auto-sync to Supabase if user is logged in and online
+
+      // CRITICAL FIX: Delete from Supabase database
       final userId = _supabaseService.currentUser?.id;
       if (userId != null && _isOnline) {
-        debugPrint('NutritionProvider: Auto-syncing after removing entry');
-        await _syncToSupabase();
+        debugPrint('NutritionProvider: Deleting entry from Supabase database');
+        await _supabaseService.deleteNutritionEntry(entryId);
+
+        debugPrint('NutritionProvider: Entry deleted, syncing to update metrics');
+
+        // Trigger database-level sync to update health_metrics and streaks
+        // This will recalculate totals after deletion via the DELETE trigger
+        await _triggerDatabaseSync();
       }
-      
+
       _setLoading(false);
       notifyListeners();
     } catch (e) {
+      debugPrint('Error removing nutrition entry: $e');
       _setError('Failed to remove nutrition entry');
       _setLoading(false);
     }
@@ -470,7 +503,17 @@ class NutritionProvider with ChangeNotifier {
         final nutrition = result['nutrition'];
         final foodName = result['foods']?.join(', ') ?? 'Mixed meal';
 
-        // Create nutrition entry from result
+        // Extract metadata from result
+        final metadata = {
+          'source': result['source'] ?? 'Unknown',
+          'isEstimated': result['isEstimated'] ?? false,
+          'confidence': result['confidence'] ?? 0.5,
+          'modelUsed': result['modelUsed'] ?? 'none',
+          'reason': result['reason'],
+          'error': result['error'],
+        };
+
+        // Create nutrition entry from result with metadata
         final entry = NutritionEntry(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           foodName: foodName,
@@ -481,6 +524,7 @@ class NutritionProvider with ChangeNotifier {
           fat: (nutrition['fat'] ?? 0).toDouble(),
           fiber: (nutrition['fiber'] ?? 0).toDouble(),
           timestamp: DateTime.now(),
+          metadata: metadata, // Include metadata
         );
 
         debugPrint('✅ Created nutrition entry:');
@@ -488,6 +532,9 @@ class NutritionProvider with ChangeNotifier {
         debugPrint('   Description: ${entry.quantity}');
         debugPrint('   Calories: ${entry.calories}');
         debugPrint('   Protein: ${entry.protein}g');
+        debugPrint('   Source: ${metadata['source']}');
+        debugPrint('   Estimated: ${metadata['isEstimated']}');
+        debugPrint('   Confidence: ${metadata['confidence']}');
 
         _setLoading(false);
         return entry;

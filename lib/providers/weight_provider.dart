@@ -21,7 +21,7 @@ class WeightProvider extends ChangeNotifier {
   String? get error => _error;
   List<WeightEntry> get entries => _entries;
 
-  bool get hasData => _weightProgress != null && _entries.isNotEmpty;
+  bool get hasData => _weightProgress != null;
 
   // Calculate trend (weight change per week)
   double? get weeklyTrend {
@@ -92,16 +92,47 @@ class WeightProvider extends ChangeNotifier {
       }
 
       // Load user profile for current weight and targets
+      // Only select columns that exist in the database
       final profileResponse = await _supabase
           .from('profiles')
-          .select('weight, target_weight, weight_unit')
-          .eq('user_id', userId)
+          .select('weight, target_weight')
+          .eq('id', userId)  // Changed from 'user_id' to 'id' to match your table structure
           .single();
 
       if (profileResponse != null) {
-        final currentWeight = profileResponse['weight']?.toDouble() ?? 0.0;
-        final targetWeight = profileResponse['target_weight']?.toDouble() ?? 0.0;
-        final unit = profileResponse['weight_unit'] ?? 'kg';
+        // Handle weight conversion - it might be string or number
+        double currentWeight = 0.0;
+        if (profileResponse['weight'] != null) {
+          if (profileResponse['weight'] is String) {
+            currentWeight = double.tryParse(profileResponse['weight']) ?? 0.0;
+          } else {
+            currentWeight = profileResponse['weight'].toDouble();
+          }
+        }
+
+        double targetWeight = 0.0;
+        if (profileResponse['target_weight'] != null) {
+          if (profileResponse['target_weight'] is String) {
+            targetWeight = double.tryParse(profileResponse['target_weight']) ?? 0.0;
+          } else {
+            targetWeight = profileResponse['target_weight'].toDouble();
+          }
+        }
+        // Default to kg since weight_unit column doesn't exist yet
+        final unit = 'kg';
+
+        // If no entries but we have current weight, create a synthetic entry for display
+        if (_entries.isEmpty && currentWeight > 0) {
+          _entries = [
+            WeightEntry(
+              id: 'profile-weight',
+              userId: userId,
+              weight: currentWeight,
+              timestamp: DateTime.now(),
+              note: 'Current weight from profile',
+            ),
+          ];
+        }
 
         // Get start weight (first entry or current weight)
         final startWeight = _entries.isNotEmpty
@@ -184,7 +215,7 @@ class WeightProvider extends ChangeNotifier {
               'weight': weight,
               'updated_at': DateTime.now().toIso8601String(),
             })
-            .eq('user_id', userId);
+            .eq('id', userId);
 
         notifyListeners();
         return true;
@@ -240,7 +271,7 @@ class WeightProvider extends ChangeNotifier {
                 'weight': latestWeight,
                 'updated_at': DateTime.now().toIso8601String(),
               })
-              .eq('user_id', userId);
+              .eq('id', userId);
         }
       }
 
@@ -270,13 +301,15 @@ class WeightProvider extends ChangeNotifier {
         return false;
       }
 
-      await _supabase
-          .from('profiles')
-          .update({
-            'weight_unit': unit,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('user_id', userId);
+      // Skip updating weight_unit since column doesn't exist
+      // Just update locally
+      // await _supabase
+      //     .from('profiles')
+      //     .update({
+      //       'weight_unit': unit,
+      //       'updated_at': DateTime.now().toIso8601String(),
+      //     })
+      //     .eq('user_id', userId);
 
       if (_weightProgress != null) {
         _weightProgress = _weightProgress!.copyWith(unit: unit);
@@ -314,7 +347,7 @@ class WeightProvider extends ChangeNotifier {
             'target_weight': targetWeight,
             'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('user_id', userId);
+          .eq('id', userId);
 
       if (_weightProgress != null) {
         _weightProgress = _weightProgress!.copyWith(targetWeight: targetWeight);

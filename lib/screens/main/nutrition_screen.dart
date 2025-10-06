@@ -237,6 +237,12 @@ class _NutritionScreenState extends State<NutritionScreen>
   Future<bool> _showFoodPreview(dynamic entry) async {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
+    // Extract metadata
+    final isEstimated = entry.metadata?['isEstimated'] ?? false;
+    final source = entry.metadata?['source'] ?? 'Unknown';
+    final confidence = entry.metadata?['confidence'] ?? 0.5;
+    final reason = entry.metadata?['reason'];
+
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -254,6 +260,35 @@ class _NutritionScreenState extends State<NutritionScreen>
                 ),
               ),
             ),
+            // NEW: Source indicator badge
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: isEstimated
+                    ? Colors.orange.withOpacity(0.2)
+                    : Colors.green.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isEstimated ? Icons.warning_amber : Icons.check_circle,
+                    size: 14,
+                    color: isEstimated ? Colors.orange : Colors.green,
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    isEstimated ? 'Estimated' : 'AI Analyzed',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isEstimated ? Colors.orange : Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
         content: Container(
@@ -261,6 +296,60 @@ class _NutritionScreenState extends State<NutritionScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // NEW: Warning banner for estimated values
+              if (isEstimated) ...[
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.orange.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Estimated Values',
+                              style: TextStyle(
+                                color: Colors.orange,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              reason ?? 'AI analysis unavailable. Values estimated based on description and local database.',
+                              style: TextStyle(
+                                color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Confidence: ${(confidence * 100).toInt()}%',
+                              style: TextStyle(
+                                color: Colors.orange,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 16),
+              ],
+
               // Food name and description
               Container(
                 padding: EdgeInsets.all(12),

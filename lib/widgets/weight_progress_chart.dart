@@ -564,18 +564,163 @@ class _WeightProgressChartState extends State<WeightProgressChart> {
   }
 
   Widget _buildNoDataChart() {
+    final provider = context.read<WeightProvider>();
+    final weightProgress = provider.weightProgress;
+
+    if (weightProgress == null) {
+      return Container(
+        height: widget.isCompact ? 200 : 250,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: Text(
+            'No weight data available',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ),
+      );
+    }
+
+    // Show a simple chart with current and target weight
+    final currentWeight = weightProgress.currentWeight;
+    final targetWeight = weightProgress.targetWeight;
+    final minWeight = (currentWeight < targetWeight ? currentWeight : targetWeight) - 5;
+    final maxWeight = (currentWeight > targetWeight ? currentWeight : targetWeight) + 5;
+    final interval = _calculateInterval(maxWeight - minWeight);
+
     return Container(
       height: widget.isCompact ? 200 : 250,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: Center(
-        child: Text(
-          'No weight entries to display',
-          style: TextStyle(color: AppTheme.textSecondary),
-        ),
+      child: Column(
+        children: [
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: interval,
+                  getDrawingHorizontalLine: (value) {
+                    return FlLine(
+                      color: AppTheme.borderColor.withOpacity(0.3),
+                      strokeWidth: 1,
+                    );
+                  },
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      getTitlesWidget: (value, meta) {
+                        if (value == 0) {
+                          return Text(
+                            'Current',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 11,
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: interval,
+                      reservedSize: 45,
+                      getTitlesWidget: (value, meta) {
+                        return Text(
+                          value.toStringAsFixed(0),
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 11,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                minX: -0.5,
+                maxX: 0.5,
+                minY: minWeight,
+                maxY: maxWeight,
+                clipData: FlClipData.all(),
+                lineBarsData: [
+                  // Current weight point
+                  LineChartBarData(
+                    spots: [FlSpot(0, currentWeight)],
+                    isCurved: false,
+                    color: AppTheme.primaryAccent,
+                    barWidth: 0,
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) {
+                        return FlDotCirclePainter(
+                          radius: 6,
+                          color: AppTheme.primaryAccent,
+                          strokeWidth: 2,
+                          strokeColor: Colors.white,
+                        );
+                      },
+                    ),
+                  ),
+                  // Target weight line (horizontal)
+                  LineChartBarData(
+                    spots: [
+                      FlSpot(-0.5, targetWeight),
+                      FlSpot(0.5, targetWeight),
+                    ],
+                    isCurved: false,
+                    color: Colors.green.withOpacity(0.5),
+                    barWidth: 2,
+                    dashArray: [8, 4],
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Start tracking your weight progress',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          if (widget.onTap != null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              icon: Icon(Icons.add, size: 16, color: AppTheme.primaryAccent),
+              label: Text(
+                'Add Weight Entry',
+                style: TextStyle(color: AppTheme.primaryAccent, fontSize: 12),
+              ),
+              onPressed: widget.onTap,
+            ),
+          ],
+        ],
       ),
     );
   }

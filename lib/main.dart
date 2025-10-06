@@ -11,6 +11,8 @@ import 'services/firebase_analytics_service.dart';
 import 'services/realtime_sync_service.dart';
 import 'services/daily_reset_service.dart';
 import 'services/permission_flow_manager.dart';
+import 'services/database_sync_service.dart';
+import 'services/background_sync_service.dart';
 // Using Supabase providers for cloud storage
 import 'providers/supabase_auth_provider.dart';
 import 'providers/supabase_nutrition_provider.dart';
@@ -29,6 +31,7 @@ import 'screens/onboarding/supabase_onboarding_screen.dart';
 import 'screens/main/main_screen.dart';
 import 'utils/app_theme.dart';
 import 'widgets/app_wrapper.dart';
+import 'widgets/app_lifecycle_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,10 +42,13 @@ void main() async {
 
   // Initialize Real-time Sync Service
   await RealtimeSyncService().initialize();
-  
+
   // Initialize Daily Reset Service
   await DailyResetService().initialize();
-  
+
+  // Initialize Background Sync Service (WorkManager)
+  await BackgroundSyncService.initialize();
+
   // Initialize Firebase
   try {
     await Firebase.initializeApp(
@@ -140,15 +146,17 @@ class MyApp extends StatelessWidget {
             home = const WelcomeScreen();
           }
           
-          return MaterialApp(
-            title: 'Streaker',
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            themeMode: themeProvider.themeMode,
-            home: AppWrapper(
-              child: home,
+          return AppLifecycleManager(
+            child: MaterialApp(
+              title: 'Streaker',
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              themeMode: themeProvider.themeMode,
+              home: AppWrapper(
+                child: home,
+              ),
+              debugShowCheckedModeBanner: false,
             ),
-            debugShowCheckedModeBanner: false,
           );
         },
       ),

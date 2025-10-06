@@ -7,6 +7,7 @@ import '../services/unified_health_service.dart';
 import '../services/realtime_sync_service.dart';
 import '../services/supabase_service.dart';
 import '../services/calorie_tracking_service.dart';
+import '../services/database_sync_service.dart';
 import '../models/daily_calorie_total.dart';
 
 class HealthProvider with ChangeNotifier {
@@ -618,6 +619,15 @@ class HealthProvider with ChangeNotifier {
       );
 
       debugPrint('✅ Health data synced to Supabase successfully');
+
+      // NEW: Trigger database sync to recalculate goals and streaks
+      try {
+        final dbSync = DatabaseSyncService();
+        await dbSync.syncToday();
+        debugPrint('✅ Database sync triggered after health save');
+      } catch (e) {
+        debugPrint('⚠️ Database sync failed (non-critical): $e');
+      }
     } catch (e) {
       debugPrint('❌ Error saving health data to Supabase: $e');
     }

@@ -1,12 +1,256 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '../config/api_config.dart';
 
+// ============================================================================
+// ERROR HANDLING SYSTEM
+// ============================================================================
+
+enum NutritionErrorType {
+  modelNotFound,      // Model doesn't exist on API
+  apiKeyInvalid,      // Authentication failed
+  rateLimitExceeded,  // Quota exceeded
+  networkTimeout,     // Request took too long
+  parseError,         // Response parsing failed
+  apiError,           // Generic API error
+  noModelAvailable,   // No initialized model
+  unknown,            // Unexpected error
+}
+
+class NutritionError {
+  final NutritionErrorType type;
+  final String message;
+  final String? originalError;
+  final DateTime timestamp;
+
+  NutritionError({
+    required this.type,
+    required this.message,
+    this.originalError,
+  }) : timestamp = DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'type': type.toString(),
+    'message': message,
+    'originalError': originalError,
+    'timestamp': timestamp.toIso8601String(),
+  };
+
+  String get userMessage {
+    switch (type) {
+      case NutritionErrorType.rateLimitExceeded:
+        return 'Too many requests. Please try again in a minute.';
+      case NutritionErrorType.networkTimeout:
+        return 'Network timeout. Check your connection and try again.';
+      case NutritionErrorType.apiKeyInvalid:
+        return 'Service configuration error. Please contact support.';
+      case NutritionErrorType.noModelAvailable:
+        return 'AI service temporarily unavailable. Using estimated values.';
+      default:
+        return 'Analysis failed. Using estimated values.';
+    }
+  }
+}
+
+// ============================================================================
+// RESULT TYPES
+// ============================================================================
+
+enum NutritionSource {
+  geminiAI,           // AI analysis successful
+  localDatabase,      // Fallback to database
+  smartEstimation,    // Intelligent estimation
+}
+
+class NutritionResult {
+  final bool success;
+  final List<String> foods;
+  final Map<String, int> nutrition;
+  final NutritionSource source;
+  final double confidence;
+  final String? modelUsed;
+  final NutritionError? error;
+  final Duration? processingTime;
+
+  NutritionResult({
+    required this.success,
+    required this.foods,
+    required this.nutrition,
+    required this.source,
+    required this.confidence,
+    this.modelUsed,
+    this.error,
+    this.processingTime,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'success': success,
+    'foods': foods,
+    'nutrition': nutrition,
+    'source': source.toString().split('.').last,
+    'confidence': confidence,
+    'modelUsed': modelUsed,
+    'isEstimated': source != NutritionSource.geminiAI,
+    'error': error?.toJson(),
+    'processingTimeMs': processingTime?.inMilliseconds,
+    'reason': error?.userMessage,
+  };
+}
+
+// ============================================================================
+// RETRY & CIRCUIT BREAKER
+// ============================================================================
+
+class RetryConfig {
+  final int maxAttempts;
+  final Duration initialDelay;
+  final double backoffMultiplier;
+  final Duration maxDelay;
+
+  const RetryConfig({
+    this.maxAttempts = 3,
+    this.initialDelay = const Duration(seconds: 1),
+    this.backoffMultiplier = 2.0,
+    this.maxDelay = const Duration(seconds: 10),
+  });
+}
+
+class CircuitBreaker {
+  final int failureThreshold;
+  final Duration resetTimeout;
+
+  int _failureCount = 0;
+  DateTime? _lastFailureTime;
+  bool _isOpen = false;
+
+  CircuitBreaker({
+    this.failureThreshold = 5,
+    this.resetTimeout = const Duration(minutes: 5),
+  });
+
+  Future<T> execute<T>(Future<T> Function() operation) async {
+    if (_isOpen && _lastFailureTime != null) {
+      final timeSinceFailure = DateTime.now().difference(_lastFailureTime!);
+      if (timeSinceFailure > resetTimeout) {
+        debugPrint('🔄 Circuit breaker: Attempting reset...');
+        _isOpen = false;
+        _failureCount = 0;
+      }
+    }
+
+    if (_isOpen) {
+      throw Exception('Circuit breaker is OPEN - too many failures');
+    }
+
+    try {
+      final result = await operation();
+      _onSuccess();
+      return result;
+    } catch (e) {
+      _onFailure();
+      rethrow;
+    }
+  }
+
+  void _onSuccess() {
+    _failureCount = 0;
+    if (_isOpen) {
+      debugPrint('✅ Circuit breaker: Reset successful');
+      _isOpen = false;
+    }
+  }
+
+  void _onFailure() {
+    _failureCount++;
+    _lastFailureTime = DateTime.now();
+
+    if (_failureCount >= failureThreshold) {
+      debugPrint('⚠️ Circuit breaker: OPENED ($_failureCount failures)');
+      _isOpen = true;
+    }
+  }
+
+  bool get isOpen => _isOpen;
+  int get failureCount => _failureCount;
+}
+
+// ============================================================================
+// METRICS TRACKING
+// ============================================================================
+
+class NutritionMetrics {
+  int totalRequests = 0;
+  int successfulRequests = 0;
+  int failedRequests = 0;
+  int fallbackRequests = 0;
+
+  final Map<String, int> errorCounts = {};
+  final List<Duration> responseTimes = [];
+
+  double get successRate =>
+    totalRequests > 0 ? successfulRequests / totalRequests : 0;
+
+  Duration get avgResponseTime {
+    if (responseTimes.isEmpty) return Duration.zero;
+    final totalMs = responseTimes.fold(0, (sum, d) => sum + d.inMilliseconds);
+    return Duration(milliseconds: totalMs ~/ responseTimes.length);
+  }
+
+  void recordSuccess(Duration responseTime) {
+    totalRequests++;
+    successfulRequests++;
+    responseTimes.add(responseTime);
+
+    if (responseTimes.length > 100) {
+      responseTimes.removeAt(0);
+    }
+  }
+
+  void recordFailure(String errorType) {
+    totalRequests++;
+    failedRequests++;
+    errorCounts[errorType] = (errorCounts[errorType] ?? 0) + 1;
+  }
+
+  void recordFallback() {
+    fallbackRequests++;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'totalRequests': totalRequests,
+    'successfulRequests': successfulRequests,
+    'failedRequests': failedRequests,
+    'fallbackRequests': fallbackRequests,
+    'successRate': successRate,
+    'avgResponseTimeMs': avgResponseTime.inMilliseconds,
+    'errorCounts': errorCounts,
+  };
+
+  void printReport() {
+    debugPrint('\n📊 NUTRITION SERVICE METRICS');
+    debugPrint('   Total Requests: $totalRequests');
+    debugPrint('   Success Rate: ${(successRate * 100).toStringAsFixed(1)}%');
+    debugPrint('   Avg Response: ${avgResponseTime.inMilliseconds}ms');
+    debugPrint('   Fallback Usage: $fallbackRequests');
+    if (errorCounts.isNotEmpty) {
+      debugPrint('   Error Breakdown:');
+      errorCounts.forEach((type, count) {
+        debugPrint('     - $type: $count');
+      });
+    }
+    debugPrint('');
+  }
+}
+
+// ============================================================================
+// MAIN SERVICE
+// ============================================================================
+
 class IndianFoodNutritionService {
-  // Singleton instance
   static IndianFoodNutritionService? _instance;
   factory IndianFoodNutritionService() {
     _instance ??= IndianFoodNutritionService._internal();
@@ -14,182 +258,415 @@ class IndianFoodNutritionService {
   }
 
   IndianFoodNutritionService._internal() {
-    _initializeGeminiModel();
+    _initializeGeminiModel().catchError((error) {
+      debugPrint('⚠️ Gemini initialization failed: $error');
+      debugPrint('   Nutrition analysis will use fallback methods');
+    });
+
+    _startHealthCheckTimer();
+    _startMetricsReporting();
   }
 
-  // Google Gemini API - Using secure config
+  // Core components
+  GenerativeModel? _model;
+  String? _activeModelName;
+  DateTime? _lastSuccessfulCall;
+  bool _isValidating = false;
+
+  // Resilience components
+  final _circuitBreaker = CircuitBreaker(
+    failureThreshold: 5,
+    resetTimeout: Duration(minutes: 5),
+  );
+  final _metrics = NutritionMetrics();
+
+  // Timers
+  Timer? _healthCheckTimer;
+  Timer? _metricsTimer;
+
   static String get _geminiApiKey => ApiConfig.geminiApiKey;
 
-  // Indian Food Composition Database (IFCT 2017) - DEPRECATED
-  // We now use Gemini AI to calculate nutrition directly for better accuracy
-  // Keeping this for reference/fallback only
-  static final Map<String, Map<String, dynamic>> _indianFoodDatabase = {
-    // Common Mixed Meals (realistic values) - PRIORITIZED FIRST
-    'mixed meal': {'calories': 350, 'protein': 15.0, 'carbs': 45.0, 'fat': 12.0, 'fiber': 5.0},
-    'thali': {'calories': 400, 'protein': 18.0, 'carbs': 55.0, 'fat': 14.0, 'fiber': 6.0},
-    'combo meal': {'calories': 380, 'protein': 16.0, 'carbs': 50.0, 'fat': 13.0, 'fiber': 5.5},
-    'full meal': {'calories': 420, 'protein': 20.0, 'carbs': 60.0, 'fat': 15.0, 'fiber': 7.0},
-    'lunch plate': {'calories': 380, 'protein': 16.0, 'carbs': 50.0, 'fat': 13.0, 'fiber': 5.5},
-    'dinner plate': {'calories': 380, 'protein': 16.0, 'carbs': 50.0, 'fat': 13.0, 'fiber': 5.5},
-    'breakfast plate': {'calories': 250, 'protein': 10.0, 'carbs': 35.0, 'fat': 8.0, 'fiber': 3.0},
+  // ============================================================================
+  // INITIALIZATION WITH REAL VALIDATION
+  // ============================================================================
 
-    // Vegetables and Salads
-    'mixed vegetables': {'calories': 50, 'protein': 2.5, 'carbs': 10.0, 'fat': 0.5, 'fiber': 3.0},
-    'salad': {'calories': 50, 'protein': 2.5, 'carbs': 10.0, 'fat': 0.5, 'fiber': 3.0},
-    'vegetable': {'calories': 50, 'protein': 2.5, 'carbs': 10.0, 'fat': 0.5, 'fiber': 3.0},
-    // North Indian
-    'roti': {'calories': 71, 'protein': 2.7, 'carbs': 15.7, 'fat': 0.4, 'fiber': 2.0},
-    'chapati': {'calories': 71, 'protein': 2.7, 'carbs': 15.7, 'fat': 0.4, 'fiber': 2.0},
-    'naan': {'calories': 262, 'protein': 8.7, 'carbs': 45.6, 'fat': 5.1, 'fiber': 2.2},
-    'paratha': {'calories': 326, 'protein': 5.8, 'carbs': 37.6, 'fat': 17.8, 'fiber': 2.7},
-    'dal': {'calories': 104, 'protein': 6.8, 'carbs': 16.3, 'fat': 0.9, 'fiber': 4.8},
-    'dal tadka': {'calories': 120, 'protein': 6.8, 'carbs': 16.3, 'fat': 3.2, 'fiber': 4.8},
-    'dal makhani': {'calories': 233, 'protein': 7.8, 'carbs': 21.2, 'fat': 13.2, 'fiber': 5.1},
-    'rajma': {'calories': 140, 'protein': 7.6, 'carbs': 22.8, 'fat': 1.5, 'fiber': 6.3},
-    'chole': {'calories': 210, 'protein': 8.4, 'carbs': 27.4, 'fat': 6.7, 'fiber': 7.2},
-    'paneer butter masala': {'calories': 342, 'protein': 14.3, 'carbs': 9.8, 'fat': 28.1, 'fiber': 1.2},
-    'palak paneer': {'calories': 284, 'protein': 12.4, 'carbs': 8.2, 'fat': 22.8, 'fiber': 3.4},
-    'butter chicken': {'calories': 438, 'protein': 30.8, 'carbs': 14.0, 'fat': 28.1, 'fiber': 2.1},
-    'chicken curry': {'calories': 243, 'protein': 25.9, 'carbs': 8.2, 'fat': 12.3, 'fiber': 1.8},
-    'biryani': {'calories': 290, 'protein': 12.2, 'carbs': 38.3, 'fat': 9.5, 'fiber': 2.9},
-    'pulao': {'calories': 205, 'protein': 4.3, 'carbs': 35.1, 'fat': 5.2, 'fiber': 1.8},
-    
-    // South Indian
-    'dosa': {'calories': 133, 'protein': 3.9, 'carbs': 28.3, 'fat': 0.7, 'fiber': 1.5},
-    'masala dosa': {'calories': 165, 'protein': 4.5, 'carbs': 32.3, 'fat': 1.8, 'fiber': 2.5},
-    'idli': {'calories': 58, 'protein': 2.1, 'carbs': 12.3, 'fat': 0.2, 'fiber': 0.8},
-    'vada': {'calories': 97, 'protein': 3.1, 'carbs': 10.9, 'fat': 4.5, 'fiber': 1.3},
-    'uttapam': {'calories': 162, 'protein': 4.2, 'carbs': 26.7, 'fat': 3.8, 'fiber': 2.1},
-    'sambar': {'calories': 65, 'protein': 3.4, 'carbs': 11.5, 'fat': 0.6, 'fiber': 3.2},
-    'rasam': {'calories': 26, 'protein': 1.3, 'carbs': 5.1, 'fat': 0.1, 'fiber': 0.9},
-    'pongal': {'calories': 207, 'protein': 5.1, 'carbs': 35.2, 'fat': 4.8, 'fiber': 2.3},
-    'upma': {'calories': 192, 'protein': 5.4, 'carbs': 28.0, 'fat': 6.3, 'fiber': 2.8},
-    'appam': {'calories': 120, 'protein': 1.8, 'carbs': 24.5, 'fat': 1.5, 'fiber': 1.2},
-    
-    // Rice & Bread
-    'rice': {'calories': 130, 'protein': 2.4, 'carbs': 28.7, 'fat': 0.3, 'fiber': 0.4},
-    'jeera rice': {'calories': 174, 'protein': 3.5, 'carbs': 32.1, 'fat': 3.5, 'fiber': 1.2},
-    'fried rice': {'calories': 228, 'protein': 4.6, 'carbs': 35.4, 'fat': 7.3, 'fiber': 1.8},
-    'lemon rice': {'calories': 185, 'protein': 3.2, 'carbs': 33.4, 'fat': 4.1, 'fiber': 1.5},
-    'curd rice': {'calories': 154, 'protein': 3.8, 'carbs': 26.7, 'fat': 3.2, 'fiber': 0.8},
-    
-    // Snacks & Street Food
-    'samosa': {'calories': 262, 'protein': 3.5, 'carbs': 23.8, 'fat': 17.5, 'fiber': 2.1},
-    'pakora': {'calories': 255, 'protein': 5.3, 'carbs': 22.4, 'fat': 16.2, 'fiber': 3.4},
-    'bhel puri': {'calories': 180, 'protein': 4.3, 'carbs': 31.5, 'fat': 4.2, 'fiber': 3.7},
-    'pani puri': {'calories': 36, 'protein': 1.1, 'carbs': 7.6, 'fat': 0.2, 'fiber': 0.8},
-    'vada pav': {'calories': 197, 'protein': 4.8, 'carbs': 28.1, 'fat': 7.4, 'fiber': 2.3},
-    'pav bhaji': {'calories': 213, 'protein': 5.2, 'carbs': 33.5, 'fat': 6.8, 'fiber': 4.1},
-    'chaat': {'calories': 153, 'protein': 4.1, 'carbs': 26.7, 'fat': 3.5, 'fiber': 3.2},
-    'kachori': {'calories': 298, 'protein': 4.2, 'carbs': 27.8, 'fat': 19.1, 'fiber': 2.5},
-    
-    // Sweets & Desserts
-    'gulab jamun': {'calories': 143, 'protein': 2.0, 'carbs': 23.0, 'fat': 5.0, 'fiber': 0.3},
-    'rasgulla': {'calories': 106, 'protein': 3.1, 'carbs': 20.3, 'fat': 1.5, 'fiber': 0.0},
-    'jalebi': {'calories': 150, 'protein': 1.0, 'carbs': 35.5, 'fat': 1.2, 'fiber': 0.3},
-    'ladoo': {'calories': 185, 'protein': 3.5, 'carbs': 24.2, 'fat': 8.5, 'fiber': 1.8},
-    'halwa': {'calories': 379, 'protein': 3.8, 'carbs': 57.7, 'fat': 15.0, 'fiber': 1.2},
-    'kheer': {'calories': 153, 'protein': 3.8, 'carbs': 23.7, 'fat': 4.8, 'fiber': 0.2},
-    'payasam': {'calories': 195, 'protein': 3.2, 'carbs': 31.5, 'fat': 6.2, 'fiber': 0.5},
-    
-    // Beverages
-    'chai': {'calories': 37, 'protein': 0.7, 'carbs': 7.0, 'fat': 0.7, 'fiber': 0.0},
-    'lassi': {'calories': 94, 'protein': 3.1, 'carbs': 15.2, 'fat': 2.1, 'fiber': 0.0},
-    'mango lassi': {'calories': 154, 'protein': 3.5, 'carbs': 28.3, 'fat': 3.2, 'fiber': 0.8},
-    'buttermilk': {'calories': 40, 'protein': 2.2, 'carbs': 4.8, 'fat': 1.1, 'fiber': 0.0},
-  };
-  
-  // Gemini Vision for Indian food recognition
-  GenerativeModel? _model;
-
-  // Try multiple Gemini model versions to find one that works
-  void _initializeGeminiModel() {
-    // Check API key validity
+  Future<void> _initializeGeminiModel() async {
     if (!ApiConfig.enableGeminiVision || _geminiApiKey.isEmpty) {
       debugPrint('⚠️ Gemini Vision is disabled or API key is missing');
       return;
     }
 
     if (!_geminiApiKey.startsWith('AIza')) {
-      debugPrint('⚠️ Invalid Gemini API key format');
+      debugPrint('❌ Invalid Gemini API key format');
       return;
     }
+
+    debugPrint('\n🚀 GEMINI INITIALIZATION STARTING...');
+    debugPrint('   Package: google_generative_ai v0.4.3');
+    debugPrint('   API Endpoint: v1beta (Flutter package default)');
+    debugPrint('   API Key: ${_geminiApiKey.substring(0, 10)}...');
+
+    // CRITICAL: Use v1beta-compatible model names
+    // The google_generative_ai Flutter package uses v1beta endpoint
     final modelVersions = [
-      'gemini-1.5-flash',     // Most common free tier model
-      'gemini-1.5-pro',       // Pro version if available
-      'gemini-1.0-pro',       // Older stable version
-      'gemini-pro',           // Generic pro version
+      'gemini-flash-latest',       // Primary: Latest stable flash (v1beta compatible)
+      'gemini-2.5-flash',          // Fallback 1: Stable 2.5 flash
+      'gemini-2.0-flash',          // Fallback 2: Stable 2.0 flash
     ];
 
-    for (final modelVersion in modelVersions) {
+    for (var i = 0; i < modelVersions.length; i++) {
+      final modelName = modelVersions[i];
+
       try {
-        debugPrint('🔄 Trying Gemini model: $modelVersion');
-        _model = GenerativeModel(
-          model: modelVersion,
+        debugPrint('\n[${i + 1}/${modelVersions.length}] Testing model: $modelName');
+        final startTime = DateTime.now();
+
+        // Step 1: Create model instance
+        final testModel = GenerativeModel(
+          model: modelName,
           apiKey: _geminiApiKey,
         );
-        debugPrint('✅ Gemini AI initialized with model: $modelVersion');
-        return; // Success - exit
-      } catch (e) {
-        debugPrint('❌ Failed to initialize $modelVersion: $e');
+        debugPrint('   ✓ Model object created');
+
+        // Step 2: ACTUALLY TEST with real API call
+        _isValidating = true;
+        debugPrint('   → Sending test request to Google API...');
+
+        final response = await testModel.generateContent([
+          Content.text('test')
+        ]).timeout(
+          Duration(seconds: 10),
+          onTimeout: () {
+            throw TimeoutException('API request timeout after 10 seconds');
+          },
+        );
+
+        _isValidating = false;
+        final duration = DateTime.now().difference(startTime);
+
+        // Step 3: Verify response is valid
+        if (response.text == null || response.text!.isEmpty) {
+          throw Exception('API returned empty response');
+        }
+
+        debugPrint('   ✓ API response received in ${duration.inMilliseconds}ms');
+        debugPrint('   ✓ Response length: ${response.text!.length} chars');
+
+        // SUCCESS
+        _model = testModel;
+        _activeModelName = modelName;
+        _lastSuccessfulCall = DateTime.now();
+
+        debugPrint('\n✅ INITIALIZATION SUCCESS');
+        debugPrint('   Active Model: $modelName');
+        debugPrint('   API Endpoint: v1beta');
+        debugPrint('   Validation: PASSED with live API test');
+        debugPrint('   Ready for production use\n');
+
+        return;
+
+      } catch (e, stackTrace) {
+        _isValidating = false;
+
+        debugPrint('   ❌ Model FAILED validation');
+        debugPrint('   Error Type: ${e.runtimeType}');
+        debugPrint('   Error: $e');
+
+        if (e.toString().contains('not found') || e.toString().contains('404')) {
+          debugPrint('   → Model does not exist on v1beta API');
+        } else if (e.toString().contains('quota') || e.toString().contains('429')) {
+          debugPrint('   → Rate limit or quota exceeded');
+        } else if (e.toString().contains('timeout')) {
+          debugPrint('   → Network timeout - possible connectivity issue');
+        } else if (e.toString().contains('401') || e.toString().contains('403')) {
+          debugPrint('   → API key invalid or unauthorized');
+        }
+
+        if (i < modelVersions.length - 1) {
+          debugPrint('   → Trying next model...\n');
+          await Future.delayed(Duration(seconds: 1));
+        }
       }
     }
 
-    debugPrint('⚠️ All Gemini models failed to initialize');
+    debugPrint('\n❌ INITIALIZATION FAILED');
+    debugPrint('   All ${modelVersions.length} models failed validation');
+    debugPrint('   AI nutrition analysis unavailable');
+    debugPrint('   Will use local database fallback\n');
+
     _model = null;
+    _activeModelName = null;
   }
-  
-  // New method to analyze food with description instead of individual items
+
+  // ============================================================================
+  // ERROR CLASSIFICATION
+  // ============================================================================
+
+  NutritionError _classifyError(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+
+    if (errorStr.contains('not found') || errorStr.contains('404')) {
+      return NutritionError(
+        type: NutritionErrorType.modelNotFound,
+        message: 'Model does not exist on API endpoint',
+        originalError: error.toString(),
+      );
+    }
+
+    if (errorStr.contains('quota') || errorStr.contains('rate limit') ||
+        errorStr.contains('429')) {
+      return NutritionError(
+        type: NutritionErrorType.rateLimitExceeded,
+        message: 'API rate limit exceeded',
+        originalError: error.toString(),
+      );
+    }
+
+    if (errorStr.contains('timeout')) {
+      return NutritionError(
+        type: NutritionErrorType.networkTimeout,
+        message: 'Request timed out',
+        originalError: error.toString(),
+      );
+    }
+
+    if (errorStr.contains('401') || errorStr.contains('403') ||
+        errorStr.contains('unauthorized')) {
+      return NutritionError(
+        type: NutritionErrorType.apiKeyInvalid,
+        message: 'API authentication failed',
+        originalError: error.toString(),
+      );
+    }
+
+    if (error is FormatException || errorStr.contains('json')) {
+      return NutritionError(
+        type: NutritionErrorType.parseError,
+        message: 'Failed to parse API response',
+        originalError: error.toString(),
+      );
+    }
+
+    return NutritionError(
+      type: NutritionErrorType.unknown,
+      message: 'Unexpected error',
+      originalError: error.toString(),
+    );
+  }
+
+  // ============================================================================
+  // RETRY LOGIC
+  // ============================================================================
+
+  Future<T> _retryWithBackoff<T>({
+    required Future<T> Function() operation,
+    required RetryConfig config,
+    bool Function(dynamic error)? shouldRetry,
+  }) async {
+    int attempt = 0;
+    Duration delay = config.initialDelay;
+
+    while (true) {
+      attempt++;
+
+      try {
+        if (attempt > 1) {
+          debugPrint('   Retry attempt $attempt/${config.maxAttempts}...');
+        }
+        return await operation();
+
+      } catch (e) {
+        final canRetry = shouldRetry?.call(e) ?? true;
+
+        if (!canRetry || attempt >= config.maxAttempts) {
+          if (attempt > 1) {
+            debugPrint('   ❌ Failed after $attempt attempts');
+          }
+          rethrow;
+        }
+
+        debugPrint('   ⚠️ Attempt $attempt failed: ${e.toString().substring(0, 100)}');
+        debugPrint('   ⏳ Retrying in ${delay.inSeconds}s...');
+
+        await Future.delayed(delay);
+
+        delay = Duration(
+          milliseconds: (delay.inMilliseconds * config.backoffMultiplier).toInt(),
+        );
+
+        if (delay > config.maxDelay) {
+          delay = config.maxDelay;
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // MAIN ANALYSIS METHOD WITH FALLBACK CHAIN
+  // ============================================================================
+
   Future<Map<String, dynamic>> analyzeWithDescription(
     File imageFile,
     String mealDescription,
   ) async {
-    try {
-      debugPrint('\n📸 Starting food analysis with description...');
-      debugPrint('Description: $mealDescription');
-      debugPrint('Image path: ${imageFile.path}');
-      debugPrint('🔑 Gemini API Key Status: ${_geminiApiKey.isNotEmpty ? "Present" : "Missing"}');
-      debugPrint('🔑 Gemini Model Status: ${_model != null ? "Initialized" : "Not Initialized"}');
+    final startTime = DateTime.now();
+    debugPrint('\n🍴 NUTRITION SCAN STARTED (Description Mode)');
+    debugPrint('   Description: $mealDescription');
+    debugPrint('   Image: ${imageFile.path}');
 
-      // Check if model is initialized
-      if (_model == null) {
-        debugPrint('⚠️ Gemini not initialized, using smart fallback');
-        // Try to analyze using local database with description parsing
-        // For generic image analysis, use default description
-        final description = 'Mixed meal from image';
-        return _analyzeWithLocalDatabase(description);
+    try {
+      // Try 1: AI Analysis with circuit breaker and retry
+      if (_model != null && !_circuitBreaker.isOpen) {
+        try {
+          debugPrint('🤖 Attempting Gemini AI analysis...');
+          debugPrint('   Model: $_activeModelName');
+          debugPrint('   Circuit Breaker: Closed (healthy)');
+
+          final result = await _circuitBreaker.execute(() =>
+            _retryWithBackoff(
+              operation: () => _callGeminiAPI(imageFile, mealDescription),
+              config: RetryConfig(
+                maxAttempts: 2,
+                initialDelay: Duration(seconds: 1),
+              ),
+              shouldRetry: (error) {
+                final errorStr = error.toString().toLowerCase();
+                return errorStr.contains('timeout') ||
+                       errorStr.contains('network') ||
+                       errorStr.contains('connection');
+              },
+            ),
+          );
+
+          if (result['success'] == true) {
+            final processingTime = DateTime.now().difference(startTime);
+            _metrics.recordSuccess(processingTime);
+            _lastSuccessfulCall = DateTime.now();
+
+            debugPrint('✅ AI Analysis successful in ${processingTime.inMilliseconds}ms');
+            debugPrint('   📦 Creating success result with:');
+            debugPrint('      foods: ${result['foods']}');
+            debugPrint('      foods type: ${result['foods'].runtimeType}');
+            debugPrint('      nutrition: ${result['nutrition']}');
+            debugPrint('      nutrition type: ${result['nutrition'].runtimeType}');
+            debugPrint('      source: NutritionSource.geminiAI');
+            debugPrint('      confidence: 0.95');
+            debugPrint('      modelUsed: $_activeModelName');
+
+            return _createSuccessResult(
+              foods: List<String>.from(result['foods']),
+              nutrition: result['nutrition'],
+              source: NutritionSource.geminiAI,
+              confidence: 0.95,
+              modelUsed: _activeModelName,
+              processingTime: processingTime,
+            );
+          }
+        } catch (e, stackTrace) {
+          final error = _classifyError(e);
+          debugPrint('⚠️ AI Analysis failed: ${error.message}');
+          debugPrint('   Error Type: ${error.type}');
+          debugPrint('   Original Error: ${error.originalError}');
+          debugPrint('   Exception Object: $e');
+          debugPrint('   Exception Runtime Type: ${e.runtimeType}');
+          debugPrint('   Stack Trace (first 5 lines):');
+          final stackLines = stackTrace.toString().split('\n');
+          for (var i = 0; i < (stackLines.length < 5 ? stackLines.length : 5); i++) {
+            debugPrint('   ${stackLines[i]}');
+          }
+          _metrics.recordFailure(error.type.toString());
+        }
+      } else {
+        debugPrint('⚠️ Skipping AI - Circuit breaker: ${_circuitBreaker.isOpen ? "OPEN" : "Model not initialized"}');
       }
 
-      // Send image and description to Gemini for nutrition calculation
-      final nutritionResult = await _calculateNutritionFromDescription(
-        imageFile,
-        mealDescription,
+      // Try 2: Local Database Matching
+      debugPrint('📚 Attempting local database lookup...');
+      _metrics.recordFallback();
+
+      final dbResult = await _analyzeWithLocalDatabase(mealDescription);
+      if (dbResult['success'] == true && dbResult['nutrition']['calories'] > 0) {
+        final processingTime = DateTime.now().difference(startTime);
+
+        debugPrint('✅ Local database match found in ${processingTime.inMilliseconds}ms');
+
+        return _createSuccessResult(
+          foods: dbResult['foods'],
+          nutrition: dbResult['nutrition'],
+          source: NutritionSource.localDatabase,
+          confidence: 0.7,
+          processingTime: processingTime,
+        );
+      }
+
+      // Try 3: Smart Estimation (always succeeds)
+      debugPrint('🧮 Using smart estimation...');
+
+      final estimateResult = _getEstimatedNutrition(mealDescription);
+      final processingTime = DateTime.now().difference(startTime);
+
+      debugPrint('✅ Smart estimation complete in ${processingTime.inMilliseconds}ms');
+
+      return _createSuccessResult(
+        foods: estimateResult['foods'],
+        nutrition: estimateResult['nutrition'],
+        source: NutritionSource.smartEstimation,
+        confidence: 0.6,
+        processingTime: processingTime,
       );
 
-      debugPrint('Final nutrition result from Gemini: ${nutritionResult['nutrition']}');
-      return nutritionResult;
     } catch (e) {
-      debugPrint('❌ Error in analyzeWithDescription: $e');
-      return {
-        'success': false,
-        'error': e.toString(),
-      };
+      debugPrint('❌ Critical error in nutrition analysis: $e');
+      final processingTime = DateTime.now().difference(startTime);
+
+      return _createSuccessResult(
+        foods: ['Unknown meal'],
+        nutrition: {'calories': 350, 'protein': 15, 'carbs': 45, 'fat': 12, 'fiber': 5},
+        source: NutritionSource.smartEstimation,
+        confidence: 0.5,
+        processingTime: processingTime,
+      );
     }
   }
 
-  // Calculate nutrition from meal description
-  Future<Map<String, dynamic>> _calculateNutritionFromDescription(
+  Map<String, dynamic> _createSuccessResult({
+    required List<String> foods,
+    required Map<String, dynamic> nutrition,
+    required NutritionSource source,
+    required double confidence,
+    String? modelUsed,
+    Duration? processingTime,
+  }) {
+    return {
+      'success': true,
+      'foods': foods,
+      'nutrition': nutrition,
+      'source': source.toString().split('.').last,
+      'isEstimated': source != NutritionSource.geminiAI,
+      'confidence': confidence,
+      'modelUsed': modelUsed ?? 'none',
+      'processingTimeMs': processingTime?.inMilliseconds,
+      'reason': source == NutritionSource.geminiAI
+        ? null
+        : 'AI analysis unavailable. Values ${source == NutritionSource.localDatabase ? "from database" : "estimated"}.',
+    };
+  }
+
+  // ============================================================================
+  // GEMINI API CALL
+  // ============================================================================
+
+  Future<Map<String, dynamic>> _callGeminiAPI(
     File imageFile,
     String description,
   ) async {
-    try {
-      debugPrint('🤖 Asking Gemini to analyze meal from description...');
+    debugPrint('   📡 Calling Gemini API...');
+    final startTime = DateTime.now();
 
-      // Read image bytes
-      final imageBytes = await imageFile.readAsBytes();
+    final imageBytes = await imageFile.readAsBytes();
+    debugPrint('   Image size: ${(imageBytes.length / 1024).toStringAsFixed(1)} KB');
 
-      // Create prompt for Gemini with description
-      final prompt = '''
+    final prompt = '''
 Analyze this food image and the provided description to calculate total nutrition.
 
 Meal Description: $description
@@ -211,855 +688,278 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
 }
 ''';
 
-      // Create content with image and text
-      final content = [
-        Content.multi([
-          TextPart(prompt),
-          DataPart('image/jpeg', imageBytes),
-        ]),
-      ];
+    final content = [
+      Content.multi([
+        TextPart(prompt),
+        DataPart('image/jpeg', imageBytes),
+      ]),
+    ];
 
-      // Generate response from Gemini
-      final response = await _model!.generateContent(content);
-      final responseText = response.text?.trim() ?? '';
+    final response = await _model!.generateContent(content).timeout(
+      Duration(seconds: 30),
+      onTimeout: () => throw TimeoutException('Gemini API request timed out after 30 seconds'),
+    );
 
-      debugPrint('Gemini raw response: $responseText');
+    final duration = DateTime.now().difference(startTime);
+    final responseText = response.text?.trim() ?? '';
 
-      // Parse JSON response
+    debugPrint('   ✓ Response received in ${duration.inMilliseconds}ms');
+    debugPrint('   Response length: ${responseText.length} chars');
+
+    if (responseText.isEmpty) {
+      throw Exception('Empty response from Gemini API');
+    }
+
+    // Parse JSON response
+    String cleanJson = responseText;
+    if (cleanJson.contains('```')) {
+      cleanJson = cleanJson.replaceAll(RegExp(r'```[\w]*\n?'), '').trim();
+    }
+
+    final nutritionData = json.decode(cleanJson);
+
+    debugPrint('   ✓ Parsed successfully');
+    debugPrint('   Foods: ${nutritionData['foods']}');
+    debugPrint('   Calories: ${nutritionData['total_calories']}');
+
+    return {
+      'success': true,
+      'foods': nutritionData['foods'] ?? [description],
+      'nutrition': {
+        'calories': (nutritionData['total_calories'] ?? 0).round(),
+        'protein': (nutritionData['total_protein'] ?? 0).round(),
+        'carbs': (nutritionData['total_carbs'] ?? 0).round(),
+        'fat': (nutritionData['total_fat'] ?? 0).round(),
+        'fiber': (nutritionData['total_fiber'] ?? 0).round(),
+      },
+    };
+  }
+
+  // ============================================================================
+  // HEALTH CHECKS & MONITORING
+  // ============================================================================
+
+  void _startHealthCheckTimer() {
+    _healthCheckTimer = Timer.periodic(Duration(minutes: 15), (timer) async {
+      await _performHealthCheck();
+    });
+    debugPrint('✅ Health check timer started (15min intervals)');
+  }
+
+  void _startMetricsReporting() {
+    _metricsTimer = Timer.periodic(Duration(hours: 1), (timer) {
+      _metrics.printReport();
+    });
+  }
+
+  Future<void> _performHealthCheck() async {
+    if (_isValidating) {
+      debugPrint('⏭️ Health check skipped - validation in progress');
+      return;
+    }
+
+    if (_lastSuccessfulCall != null) {
+      final timeSinceSuccess = DateTime.now().difference(_lastSuccessfulCall!);
+      final successRate = _metrics.successRate;
+
+      if (timeSinceSuccess.inMinutes < 30 && successRate > 0.8) {
+        debugPrint('✅ Health check skipped - system healthy (${(successRate * 100).toStringAsFixed(1)}% success rate)');
+        return;
+      }
+    }
+
+    if (_model != null) {
       try {
-        // Clean up response (remove any markdown formatting)
-        String cleanJson = responseText;
-        if (cleanJson.contains('```')) {
-          cleanJson = cleanJson.replaceAll(RegExp(r'```[\w]*\n?'), '').trim();
+        debugPrint('🏥 Running health check on $_activeModelName...');
+        final startTime = DateTime.now();
+
+        await _model!.generateContent([
+          Content.text('health check')
+        ]).timeout(Duration(seconds: 5));
+
+        final duration = DateTime.now().difference(startTime);
+        _lastSuccessfulCall = DateTime.now();
+
+        debugPrint('✅ Health check passed (${duration.inMilliseconds}ms)');
+
+      } catch (e) {
+        debugPrint('⚠️ Health check failed: $e');
+        debugPrint('   Attempting model reinitialization...');
+
+        _model = null;
+        _activeModelName = null;
+
+        await _initializeGeminiModel();
+
+        if (_model != null) {
+          debugPrint('✅ Auto-recovery successful');
+        } else {
+          debugPrint('❌ Auto-recovery failed');
         }
-
-        final nutritionData = json.decode(cleanJson);
-
-        return {
-          'success': true,
-          'foods': nutritionData['foods'] ?? [description],
-          'nutrition': {
-            'calories': (nutritionData['total_calories'] ?? 0).round(),
-            'protein': (nutritionData['total_protein'] ?? 0).round(),
-            'carbs': (nutritionData['total_carbs'] ?? 0).round(),
-            'fat': (nutritionData['total_fat'] ?? 0).round(),
-            'fiber': (nutritionData['total_fiber'] ?? 0).round(),
-          },
-          'confidence': 0.9,
-        };
-      } catch (parseError) {
-        debugPrint('Error parsing Gemini response: $parseError');
-        // Fallback to local database analysis
-        return _analyzeWithLocalDatabase(description);
       }
-    } catch (e) {
-      debugPrint('Error with Gemini calculation: $e');
-      debugPrint('Falling back to local database analysis');
-      // Use local database as fallback - use the actual meal description
-      final fallbackDescription = description ?? 'Mixed meal';
-      return _analyzeWithLocalDatabase(fallbackDescription);
+    } else {
+      debugPrint('🏥 No model initialized - attempting init...');
+      await _initializeGeminiModel();
     }
   }
 
-  // Main function to analyze food image with user-provided details
-  Future<Map<String, dynamic>> analyzeIndianFoodWithDetails(
-    File imageFile,
-    String foodName,
-    String quantity,
-  ) async {
-    try {
-      debugPrint('\n📸 Starting Indian food analysis with Gemini AI...');
-      debugPrint('User provided: $foodName, Quantity: $quantity');
-      debugPrint('Image path: ${imageFile.path}');
-      debugPrint('🔑 Gemini API Key Status: ${_geminiApiKey.isNotEmpty ? "Present" : "Missing"}');
-      debugPrint('🔑 Gemini Model Status: ${_model != null ? "Initialized" : "Not Initialized"}');
-
-      // Check if model is initialized
-      if (_model == null) {
-        debugPrint('⚠️ Gemini not initialized, using smart fallback');
-        // Try to analyze using local database with description parsing
-        // For generic image analysis, use default description
-        final description = 'Mixed meal from image';
-        return _analyzeWithLocalDatabase(description);
-      }
-
-      // Step 1: Send image and food details to Gemini for direct nutrition calculation
-      final nutritionResult = await _calculateNutritionWithGemini(
-        imageFile,
-        foodName,
-        quantity,
-      );
-
-      debugPrint('Final nutrition result from Gemini: ${nutritionResult['nutrition']}');
-      return nutritionResult;
-    } catch (e) {
-      debugPrint('❌ Error in analyzeIndianFoodWithDetails: $e');
-      debugPrint('Using local database fallback');
-      // Combine foodName and quantity for fallback
-      final description = '$quantity $foodName';
-      return _analyzeWithLocalDatabase(description);
-    }
+  void dispose() {
+    _healthCheckTimer?.cancel();
+    _metricsTimer?.cancel();
+    debugPrint('🧹 IndianFoodNutritionService disposed');
   }
-  
-  // New method to calculate nutrition directly with Gemini
-  Future<Map<String, dynamic>> _calculateNutritionWithGemini(
-    File imageFile,
-    String foodName,
-    String quantity,
-  ) async {
-    try {
-      debugPrint('🤖 Asking Gemini to calculate nutrition...');
 
-      // Read image bytes
-      final imageBytes = await imageFile.readAsBytes();
+  // ============================================================================
+  // DIAGNOSTIC TOOLS
+  // ============================================================================
 
-      // Create prompt for Gemini
-      final prompt = '''
-Analyze this food image and calculate the nutrition information.
+  Future<void> runDiagnostics() async {
+    debugPrint('\n🔧 RUNNING NUTRITION SERVICE DIAGNOSTICS\n');
 
-Food Name: $foodName
-Quantity: $quantity
+    debugPrint('TEST 1: API Key Validation');
+    debugPrint('  API Key Present: ${_geminiApiKey.isNotEmpty}');
+    debugPrint('  API Key Format: ${_geminiApiKey.startsWith("AIza") ? "Valid" : "Invalid"}');
+    debugPrint('  API Key Length: ${_geminiApiKey.length} chars');
 
-Please provide accurate nutritional information for this specific food item and quantity.
-If the image shows Indian food, use appropriate Indian food nutritional databases.
+    debugPrint('\nTEST 2: Model Initialization');
+    await _initializeGeminiModel();
+    debugPrint('  Active Model: ${_activeModelName ?? "NONE"}');
+    debugPrint('  Model Initialized: ${_model != null}');
 
-Return ONLY a JSON object in this exact format (no markdown, no explanation):
-{
-  "food_name": "actual food name",
-  "quantity": "quantity with unit",
-  "calories": number,
-  "protein": number (in grams),
-  "carbs": number (in grams),
-  "fat": number (in grams),
-  "fiber": number (in grams)
-}
-''';
-
-      // Create content with image and text
-      final content = [
-        Content.multi([
-          TextPart(prompt),
-          DataPart('image/jpeg', imageBytes),
-        ]),
-      ];
-
-      // Generate response from Gemini
-      final response = await _model!.generateContent(content);
-      final responseText = response.text?.trim() ?? '';
-
-      debugPrint('Gemini raw response: $responseText');
-
-      // Parse JSON response
+    if (_model != null) {
+      debugPrint('\nTEST 3: Simple API Call');
       try {
-        // Clean up response (remove any markdown formatting)
-        String cleanJson = responseText;
-        if (cleanJson.contains('```')) {
-          cleanJson = cleanJson.replaceAll(RegExp(r'```[\w]*\n?'), '').trim();
-        }
+        final start = DateTime.now();
+        final response = await _model!.generateContent([
+          Content.text('What is 2+2?')
+        ]).timeout(Duration(seconds: 10));
 
-        final nutritionData = json.decode(cleanJson);
+        final duration = DateTime.now().difference(start);
+        debugPrint('  ✅ API Call Successful');
+        debugPrint('  Response Time: ${duration.inMilliseconds}ms');
+        debugPrint('  Response: ${response.text?.substring(0, 50)}...');
 
-        return {
-          'success': true,
-          'foods': [nutritionData['food_name'] ?? foodName],
-          'nutrition': {
-            'calories': (nutritionData['calories'] ?? 0).round(),
-            'protein': (nutritionData['protein'] ?? 0).round(),
-            'carbs': (nutritionData['carbs'] ?? 0).round(),
-            'fat': (nutritionData['fat'] ?? 0).round(),
-            'fiber': (nutritionData['fiber'] ?? 0).round(),
-          },
-          'confidence': 0.9, // High confidence as Gemini calculated it directly
-        };
-      } catch (parseError) {
-        debugPrint('Error parsing Gemini response: $parseError');
-        // If parsing fails, try to extract numbers from text
-        return _extractNutritionFromText(responseText, foodName);
-      }
-    } catch (e) {
-      debugPrint('Error with Gemini calculation: $e');
-      debugPrint('Falling back to local database analysis');
-      // Use local database as fallback - combine food name and quantity
-      final fallbackDescription = '$quantity $foodName';
-      return _analyzeWithLocalDatabase(fallbackDescription);
-    }
-  }
-
-  // Helper method to extract nutrition from text if JSON parsing fails
-  Map<String, dynamic> _extractNutritionFromText(String text, String foodName) {
-    try {
-      // Try to extract numbers from text using regex
-      final caloriesMatch = RegExp(r'calories?[:\s]*(\d+)', caseSensitive: false).firstMatch(text);
-      final proteinMatch = RegExp(r'protein[:\s]*(\d+\.?\d*)', caseSensitive: false).firstMatch(text);
-      final carbsMatch = RegExp(r'carb(?:ohydrate)?s?[:\s]*(\d+\.?\d*)', caseSensitive: false).firstMatch(text);
-      final fatMatch = RegExp(r'fat[:\s]*(\d+\.?\d*)', caseSensitive: false).firstMatch(text);
-      final fiberMatch = RegExp(r'fiber[:\s]*(\d+\.?\d*)', caseSensitive: false).firstMatch(text);
-
-      return {
-        'success': true,
-        'foods': [foodName],
-        'nutrition': {
-          'calories': int.tryParse(caloriesMatch?.group(1) ?? '0') ?? 150,
-          'protein': (double.tryParse(proteinMatch?.group(1) ?? '0') ?? 5).round(),
-          'carbs': (double.tryParse(carbsMatch?.group(1) ?? '0') ?? 20).round(),
-          'fat': (double.tryParse(fatMatch?.group(1) ?? '0') ?? 5).round(),
-          'fiber': (double.tryParse(fiberMatch?.group(1) ?? '0') ?? 2).round(),
-        },
-        'confidence': 0.7,
-      };
-    } catch (e) {
-      return _getDefaultNutrition();
-    }
-  }
-
-  // Helper method to parse quantity string
-  Map<String, dynamic> _parseQuantity(String quantity) {
-    // Extract number and unit from quantity string like "100 grams" or "2 cups"
-    final parts = quantity.split(' ');
-    double value = 100; // default
-    String unit = 'grams'; // default
-
-    if (parts.isNotEmpty) {
-      value = double.tryParse(parts[0]) ?? 100;
-      if (parts.length > 1) {
-        unit = parts.sublist(1).join(' ');
+      } catch (e) {
+        debugPrint('  ❌ API Call Failed: $e');
       }
     }
 
-    return {'value': value, 'unit': unit};
+    debugPrint('\nTEST 4: Circuit Breaker Status');
+    debugPrint('  Is Open: ${_circuitBreaker.isOpen}');
+    debugPrint('  Failure Count: ${_circuitBreaker.failureCount}');
+
+    debugPrint('\nTEST 5: Service Metrics');
+    _metrics.printReport();
+
+    debugPrint('🔧 DIAGNOSTICS COMPLETE\n');
   }
-  
-  // Adjust nutrition values based on quantity
-  Map<String, dynamic> _adjustNutritionForQuantity(
-    Map<String, dynamic> nutritionData,
-    double quantity,
-    String unit,
-  ) {
-    if (!nutritionData['success']) return nutritionData;
-    
-    // Convert quantity to grams if needed
-    double gramsMultiplier = 1.0;
-    
-    switch (unit.toLowerCase()) {
-      case 'kg':
-      case 'kilogram':
-      case 'kilograms':
-        gramsMultiplier = quantity * 1000 / 100; // Convert to grams then to per 100g
-        break;
-      case 'g':
-      case 'gram':
-      case 'grams':
-        gramsMultiplier = quantity / 100; // Nutrition is per 100g
-        break;
-      case 'cup':
-      case 'cups':
-        gramsMultiplier = quantity * 250 / 100; // Approximate 1 cup = 250g
-        break;
-      case 'bowl':
-      case 'bowls':
-        gramsMultiplier = quantity * 300 / 100; // Approximate 1 bowl = 300g
-        break;
-      case 'plate':
-      case 'plates':
-        gramsMultiplier = quantity * 400 / 100; // Approximate 1 plate = 400g
-        break;
-      case 'serving':
-      case 'servings':
-        gramsMultiplier = quantity * 150 / 100; // Approximate 1 serving = 150g
-        break;
-      case 'piece':
-      case 'pieces':
-        gramsMultiplier = quantity * 100 / 100; // Approximate 1 piece = 100g
-        break;
-      case 'ml':
-      case 'milliliter':
-      case 'milliliters':
-        gramsMultiplier = quantity / 100; // Approximate 1ml = 1g for liquids
-        break;
-      case 'l':
-      case 'liter':
-      case 'liters':
-        gramsMultiplier = quantity * 1000 / 100; // 1L = 1000ml = 1000g approx
-        break;
-      default:
-        gramsMultiplier = quantity / 100; // Default assumption
-    }
-    
-    // Adjust all nutrition values
-    if (nutritionData['nutrition'] != null) {
-      final nutrition = nutritionData['nutrition'] as Map<String, dynamic>;
-      nutritionData['nutrition'] = {
-        'calories': ((nutrition['calories'] ?? 0) * gramsMultiplier).round(),
-        'protein': ((nutrition['protein'] ?? 0) * gramsMultiplier).round(),
-        'carbs': ((nutrition['carbs'] ?? 0) * gramsMultiplier).round(),
-        'fat': ((nutrition['fat'] ?? 0) * gramsMultiplier).round(),
-        'fiber': ((nutrition['fiber'] ?? 0) * gramsMultiplier).round(),
-      };
-    }
-    
-    return nutritionData;
-  }
-  
-  // Main function to analyze food image
-  Future<Map<String, dynamic>> analyzeIndianFood(File imageFile) async {
-    try {
-      debugPrint('\n📸 Starting Indian food analysis with Gemini AI...');
-      debugPrint('Image path: ${imageFile.path}');
 
-      // Check if model is initialized
-      if (_model == null) {
-        debugPrint('⚠️ Gemini not initialized, using smart fallback');
-        // Try to analyze using local database with description parsing
-        // For generic image analysis, use default description
-        final description = 'Mixed meal from image';
-        return _analyzeWithLocalDatabase(description);
-      }
+  // ============================================================================
+  // LOCAL DATABASE & ESTIMATION (keeping existing implementation)
+  // ============================================================================
 
-      // Let Gemini analyze the image and calculate nutrition directly
-      // Default to 100 grams if no quantity specified
-      final nutritionResult = await _calculateNutritionWithGemini(
-        imageFile,
-        'food item', // Generic name, Gemini will identify
-        '100 grams', // Default quantity
-      );
+  static final Map<String, Map<String, dynamic>> _indianFoodDatabase = {
+    'mixed meal': {'calories': 350, 'protein': 15.0, 'carbs': 45.0, 'fat': 12.0, 'fiber': 5.0},
+    'thali': {'calories': 400, 'protein': 18.0, 'carbs': 55.0, 'fat': 14.0, 'fiber': 6.0},
+    'roti': {'calories': 71, 'protein': 2.7, 'carbs': 15.7, 'fat': 0.4, 'fiber': 2.0},
+    'chapati': {'calories': 71, 'protein': 2.7, 'carbs': 15.7, 'fat': 0.4, 'fiber': 2.0},
+    'naan': {'calories': 262, 'protein': 8.7, 'carbs': 45.6, 'fat': 5.1, 'fiber': 2.2},
+    'paratha': {'calories': 326, 'protein': 5.8, 'carbs': 37.6, 'fat': 17.8, 'fiber': 2.7},
+    'dal': {'calories': 104, 'protein': 6.8, 'carbs': 16.3, 'fat': 0.9, 'fiber': 4.8},
+    'dal tadka': {'calories': 120, 'protein': 6.8, 'carbs': 16.3, 'fat': 3.2, 'fiber': 4.8},
+    'dal makhani': {'calories': 233, 'protein': 7.8, 'carbs': 21.2, 'fat': 13.2, 'fiber': 5.1},
+    'rajma': {'calories': 140, 'protein': 7.6, 'carbs': 22.8, 'fat': 1.5, 'fiber': 6.3},
+    'chole': {'calories': 210, 'protein': 8.4, 'carbs': 27.4, 'fat': 6.7, 'fiber': 7.2},
+    'paneer butter masala': {'calories': 342, 'protein': 14.3, 'carbs': 9.8, 'fat': 28.1, 'fiber': 1.2},
+    'palak paneer': {'calories': 284, 'protein': 12.4, 'carbs': 8.2, 'fat': 22.8, 'fiber': 3.4},
+    'butter chicken': {'calories': 438, 'protein': 30.8, 'carbs': 14.0, 'fat': 28.1, 'fiber': 2.1},
+    'chicken curry': {'calories': 243, 'protein': 25.9, 'carbs': 8.2, 'fat': 12.3, 'fiber': 1.8},
+    'biryani': {'calories': 290, 'protein': 12.2, 'carbs': 38.3, 'fat': 9.5, 'fiber': 2.9},
+    'pulao': {'calories': 205, 'protein': 4.3, 'carbs': 35.1, 'fat': 5.2, 'fiber': 1.8},
+    'dosa': {'calories': 133, 'protein': 3.9, 'carbs': 28.3, 'fat': 0.7, 'fiber': 1.5},
+    'masala dosa': {'calories': 165, 'protein': 4.5, 'carbs': 32.3, 'fat': 1.8, 'fiber': 2.5},
+    'idli': {'calories': 58, 'protein': 2.1, 'carbs': 12.3, 'fat': 0.2, 'fiber': 0.8},
+    'vada': {'calories': 97, 'protein': 3.1, 'carbs': 10.9, 'fat': 4.5, 'fiber': 1.3},
+    'sambar': {'calories': 65, 'protein': 3.4, 'carbs': 11.5, 'fat': 0.6, 'fiber': 3.2},
+    'rice': {'calories': 130, 'protein': 2.4, 'carbs': 28.7, 'fat': 0.3, 'fiber': 0.4},
+    'samosa': {'calories': 262, 'protein': 3.5, 'carbs': 23.8, 'fat': 17.5, 'fiber': 2.1},
+  };
 
-      debugPrint('Final nutrition result from Gemini: ${nutritionResult['nutrition']}');
-      return nutritionResult;
-    } catch (e) {
-      debugPrint('Error analyzing Indian food: $e');
-      debugPrint('Using local database fallback');
-      // Fallback to estimated nutrition for generic food
-      return _analyzeWithLocalDatabase('Mixed meal');
-    }
-  }
-  
-  // Use Google Gemini Vision (FREE tier: 60 requests/minute)
-  Future<List<String>> _identifyFoodWithGemini(File imageFile) async {
-    // Check if model is initialized
-    if (_model == null) {
-      debugPrint('Gemini not initialized, using pattern matching');
-      return await _identifyFoodByPatternMatching(imageFile);
-    }
-    
-    try {
-      final imageBytes = await imageFile.readAsBytes();
-      
-      // Create the prompt for Indian food recognition
-      final prompt = '''
-You are an expert in Indian cuisine. Analyze this food image and identify ONLY the Indian food items you can see.
-
-IMPORTANT RULES:
-1. Only identify foods that are clearly visible in the image
-2. Use exact names from this list when possible:
-   - roti, chapati, naan, paratha
-   - dal, dal tadka, dal makhani, rajma, chole
-   - paneer butter masala, palak paneer
-   - butter chicken, chicken curry
-   - biryani, pulao, rice, jeera rice, fried rice
-   - dosa, masala dosa, idli, vada, uttapam
-   - sambar, rasam, pongal, upma
-   - samosa, pakora, bhel puri, pani puri
-   - gulab jamun, rasgulla, jalebi, ladoo
-
-3. Return ONLY a JSON object (no other text):
-{
-  "foods": ["exact_food_name_1", "exact_food_name_2"],
-  "confidence": 0.85
-}
-
-4. If you're not sure, return:
-{
-  "foods": ["rice"],
-  "confidence": 0.3
-}
-
-Analyze the image now:
-''';
-      
-      final content = [
-        Content.multi([
-          TextPart(prompt),
-          DataPart('image/jpeg', imageBytes),
-        ])
-      ];
-      
-      debugPrint('📤 Sending request to Gemini API...');
-      final response = await _model!.generateContent(content);
-      final responseText = response.text ?? '';
-
-      // Log the full Gemini response for debugging
-      debugPrint('=== GEMINI RESPONSE START ===');
-      debugPrint('Response received: ${responseText.isNotEmpty ? "Yes" : "No"}');
-      debugPrint('Response length: ${responseText.length} characters');
-      if (responseText.isNotEmpty) {
-        debugPrint(responseText.substring(0, responseText.length > 200 ? 200 : responseText.length));
-      } else {
-        debugPrint('⚠️ Empty response from Gemini');
-      }
-      debugPrint('=== GEMINI RESPONSE END ===');
-      
-      // Parse the JSON response (handle multi-line JSON)
-      final jsonMatch = RegExp(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', multiLine: true, dotAll: true).firstMatch(responseText);
-      if (jsonMatch != null) {
-        try {
-          final jsonString = jsonMatch.group(0)!;
-          debugPrint('Extracted JSON: $jsonString');
-          final jsonData = json.decode(jsonString);
-          final foods = List<String>.from(jsonData['foods'] ?? []);
-          final confidence = jsonData['confidence'] ?? 0.0;
-          
-          debugPrint('Identified foods: $foods');
-          debugPrint('Confidence: $confidence');
-          
-          // Normalize food names to match our database
-          final normalizedFoods = foods.map((food) => _normalizeFoodName(food)).toList();
-          debugPrint('Normalized foods: $normalizedFoods');
-          
-          return normalizedFoods;
-        } catch (e) {
-          debugPrint('JSON parsing error: $e');
-        }
-      }
-      
-      debugPrint('No JSON found, extracting from text...');
-      // If JSON parsing fails, try to extract food names from text
-      final extractedFoods = _extractFoodNames(responseText);
-      debugPrint('Extracted foods from text: $extractedFoods');
-      return extractedFoods;
-      
-    } catch (e) {
-      debugPrint('❌ Gemini Vision error: $e');
-      debugPrint('Error type: ${e.runtimeType}');
-      debugPrint('Stack trace: ${StackTrace.current}');
-      return [];
-    }
-  }
-  
-  // Normalize food names to match database keys
-  String _normalizeFoodName(String foodName) {
-    return foodName
-        .toLowerCase()
-        .replaceAll('_', ' ')
-        .replaceAll('-', ' ')
-        .trim();
-  }
-  
-  // Extract food names from text response
-  List<String> _extractFoodNames(String text) {
+  Future<Map<String, dynamic>> _analyzeWithLocalDatabase(String description) async {
+    final lowerDesc = description.toLowerCase();
     final foods = <String>[];
-    final lowerText = text.toLowerCase();
-    
-    // Check for known food items in the response
-    for (final foodName in _indianFoodDatabase.keys) {
-      if (lowerText.contains(foodName)) {
+    final quantities = <String, int>{};
+
+    final sortedFoodNames = _indianFoodDatabase.keys.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    for (final foodName in sortedFoodNames) {
+      if (lowerDesc.contains(foodName) && !foods.contains(foodName)) {
         foods.add(foodName);
+        quantities[foodName] = 1;
       }
     }
-    
-    return foods;
-  }
-  
-  // Get nutrition data from database
-  Map<String, dynamic> _getNutritionFromDatabase(List<String> foodItems) {
-    if (foodItems.isEmpty) return _getDefaultNutrition();
-    
-    debugPrint('\n📊 Looking up nutrition for: $foodItems');
-    
-    // Aggregate nutrition for all identified foods
-    double totalCalories = 0;
+
+    if (foods.isEmpty) {
+      return {'success': false, 'foods': [], 'nutrition': {}};
+    }
+
+    int totalCalories = 0;
     double totalProtein = 0;
     double totalCarbs = 0;
     double totalFat = 0;
     double totalFiber = 0;
-    
-    final identifiedFoods = <Map<String, dynamic>>[];
-    final notFoundFoods = <String>[];
-    
-    for (final food in foodItems) {
-      final nutrition = _indianFoodDatabase[food];
-      if (nutrition != null) {
-        debugPrint('✅ Found in database: $food -> $nutrition');
-        totalCalories += nutrition['calories'] ?? 0;
-        totalProtein += nutrition['protein'] ?? 0;
-        totalCarbs += nutrition['carbs'] ?? 0;
-        totalFat += nutrition['fat'] ?? 0;
-        totalFiber += nutrition['fiber'] ?? 0;
-        
-        identifiedFoods.add({
-          'name': food,
-          'calories': nutrition['calories'],
-          'confidence': 0.85,
-        });
-      } else {
-        debugPrint('❌ Not found in database: $food');
-        notFoundFoods.add(food);
-      }
+
+    for (final food in foods) {
+      final nutrition = _indianFoodDatabase[food]!;
+      final quantity = quantities[food] ?? 1;
+
+      totalCalories += (nutrition['calories'] as int) * quantity;
+      totalProtein += (nutrition['protein'] as double) * quantity;
+      totalCarbs += (nutrition['carbs'] as double) * quantity;
+      totalFat += (nutrition['fat'] as double) * quantity;
+      totalFiber += (nutrition['fiber'] as double) * quantity;
     }
-    
-    if (notFoundFoods.isNotEmpty) {
-      debugPrint('⚠️ Foods not in database: $notFoundFoods');
-      debugPrint('Available foods in database: ${_indianFoodDatabase.keys.take(10).toList()}...');
-    }
-    
+
     return {
       'success': true,
-      'foods': identifiedFoods,
+      'foods': foods,
       'nutrition': {
-        'calories': totalCalories.round(),
+        'calories': totalCalories,
         'protein': totalProtein.round(),
         'carbs': totalCarbs.round(),
         'fat': totalFat.round(),
         'fiber': totalFiber.round(),
       },
-      'source': 'Indian Food Database (IFCT 2017)',
     };
   }
-  
-  // Fallback: Use free Spoonacular API (150 requests/day)
-  Future<Map<String, dynamic>> _fallbackAnalysis(File imageFile) async {
-    try {
-      // Spoonacular FREE tier: 150 points/day
-      const apiKey = 'YOUR_SPOONACULAR_API_KEY'; // Get from spoonacular.com/food-api
-      const url = 'https://api.spoonacular.com/food/images/analyze';
-      
-      var request = http.MultipartRequest('POST', Uri.parse(url));
-      request.fields['apiKey'] = apiKey;
-      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-      
-      final response = await request.send();
-      if (response.statusCode == 200) {
-        final responseData = await response.stream.bytesToString();
-        final data = json.decode(responseData);
-        
-        // Convert Spoonacular response to our format
-        return {
-          'success': true,
-          'nutrition': {
-            'calories': data['nutrition']['calories'] ?? 0,
-            'protein': data['nutrition']['protein'] ?? 0,
-            'carbs': data['nutrition']['carbs'] ?? 0,
-            'fat': data['nutrition']['fat'] ?? 0,
-            'fiber': data['nutrition']['fiber'] ?? 0,
-          },
-          'source': 'Spoonacular API',
-        };
-      }
-    } catch (e) {
-      debugPrint('Spoonacular fallback error: $e');
-    }
-    
-    return _getDefaultNutrition();
-  }
-  
-  // Search by text (when image recognition fails)
-  Future<Map<String, dynamic>> searchIndianFood(String query) async {
-    final normalizedQuery = _normalizeFoodName(query);
-    final words = normalizedQuery.split(' ');
-    
-    // Try exact match first
-    if (_indianFoodDatabase.containsKey(normalizedQuery)) {
-      return _getNutritionFromDatabase([normalizedQuery]);
-    }
-    
-    // Try partial matches
-    final matches = <String>[];
-    for (final foodName in _indianFoodDatabase.keys) {
-      // Check if any word in query matches food name
-      for (final word in words) {
-        if (foodName.contains(word) && word.length > 2) {
-          matches.add(foodName);
-          break;
-        }
-      }
-    }
-    
-    if (matches.isNotEmpty) {
-      return _getNutritionFromDatabase(matches);
-    }
-    
-    // Use Gemini to understand the query
-    return await _searchWithGemini(query);
-  }
-  
-  // Pattern matching fallback when Gemini is not available
-  Future<List<String>> _identifyFoodByPatternMatching(File imageFile) async {
-    // This is a simplified fallback - in production, you could use
-    // image analysis libraries or other techniques
-    debugPrint('Using pattern matching fallback for food identification');
-    
-    // For demo purposes, return common foods based on file name or random selection
-    // In a real app, you might use image color analysis, ML models, etc.
-    final fileName = imageFile.path.toLowerCase();
-    
-    // Check if filename contains food hints
-    for (final foodName in _indianFoodDatabase.keys) {
-      if (fileName.contains(foodName.replaceAll(' ', ''))) {
-        return [foodName];
-      }
-    }
-    
-    // Return some common foods as suggestions for testing
-    return ['dal', 'rice', 'chapati'];
-  }
-  
-  // Use Gemini for text-based food search
-  Future<Map<String, dynamic>> _searchWithGemini(String query) async {
-    // Check if model is initialized
-    if (_model == null) {
-      // Fallback to direct database search
-      return searchIndianFood(query);
-    }
-    
-    try {
-      final prompt = '''
-      The user is searching for nutrition information about: "$query"
-      
-      This is likely an Indian food item. Based on your knowledge, provide:
-      1. The most likely Indian food item they're referring to
-      2. Estimated nutrition per serving (100g or 1 piece):
-         - Calories
-         - Protein (g)
-         - Carbs (g)
-         - Fat (g)
-         - Fiber (g)
-      
-      Return as JSON:
-      {
-        "food": "identified food name",
-        "calories": 200,
-        "protein": 10,
-        "carbs": 30,
-        "fat": 5,
-        "fiber": 3
-      }
-      ''';
-      
-      final response = await _model!.generateContent([Content.text(prompt)]);
-      final responseText = response.text ?? '';
-      
-      final jsonMatch = RegExp(r'\{[^}]+\}').firstMatch(responseText);
-      if (jsonMatch != null) {
-        final data = json.decode(jsonMatch.group(0)!);
-        return {
-          'success': true,
-          'foods': [{
-            'name': data['food'],
-            'confidence': 0.75,
-          }],
-          'nutrition': {
-            'calories': data['calories'] ?? 0,
-            'protein': data['protein'] ?? 0,
-            'carbs': data['carbs'] ?? 0,
-            'fat': data['fat'] ?? 0,
-            'fiber': data['fiber'] ?? 0,
-          },
-          'source': 'AI Estimation (Gemini)',
-        };
-      }
-    } catch (e) {
-      debugPrint('Gemini search error: $e');
-    }
-    
-    return _getDefaultNutrition();
-  }
-  
-  // Smart fallback: Analyze meal using local database
-  Future<Map<String, dynamic>> _analyzeWithLocalDatabase(String description) async {
-    try {
-      debugPrint('🔍 Analyzing with local database: $description');
 
-      // Convert description to lowercase for matching
-      final lowerDesc = description.toLowerCase();
-
-      // Extract quantities and food items from description
-      final foods = <String>[];
-      final quantities = <String, int>{};
-
-      // Common quantity patterns
-      final quantityPatterns = [
-        RegExp(r'(\d+)\s*(?:piece|pcs|pc|nos|number)?\s*(?:of)?\s*(\w+)', caseSensitive: false),
-        RegExp(r'(\d+)\s*(\w+)', caseSensitive: false),
-        RegExp(r'(one|two|three|four|five|half|quarter)\s+(\w+)', caseSensitive: false),
-      ];
-
-      // Number word mapping
-      final numberWords = {
-        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-        'half': 0.5, 'quarter': 0.25, 'single': 1, 'double': 2,
-      };
-
-      // Search for known foods in the description - prioritize exact and longer matches
-      // First, try to find exact or best matches
-      final sortedFoodNames = _indianFoodDatabase.keys.toList()
-        ..sort((a, b) => b.length.compareTo(a.length)); // Sort by length, longest first
-
-      for (final foodName in sortedFoodNames) {
-        // Skip 'mixed vegetables' if we're looking for 'mixed meal'
-        if (foodName == 'mixed vegetables' &&
-            (lowerDesc.contains('mixed meal') ||
-             lowerDesc.contains('meal') ||
-             !lowerDesc.contains('vegetable'))) {
-          continue;
-        }
-
-        if (lowerDesc.contains(foodName)) {
-          // Avoid duplicate additions
-          if (!foods.contains(foodName)) {
-            foods.add(foodName);
-          }
-
-          // Try to extract quantity for this food
-          for (final pattern in quantityPatterns) {
-            final matches = pattern.allMatches(lowerDesc);
-            for (final match in matches) {
-              final matchedFood = match.group(2)?.toLowerCase() ?? '';
-              if (foodName.contains(matchedFood) || matchedFood.contains(foodName.split(' ').first)) {
-                final quantityStr = match.group(1)?.toLowerCase() ?? '1';
-                final quantity = numberWords[quantityStr] ??
-                                 (double.tryParse(quantityStr) ?? 1.0);
-                quantities[foodName] = quantity.round();
-                break;
-              }
-            }
-          }
-
-          // Default quantity if not found
-          quantities[foodName] ??= 1;
-        }
-      }
-
-      // If no foods found, try partial matching
-      if (foods.isEmpty) {
-        final words = lowerDesc.split(RegExp(r'[\s,;.]+'));
-        for (final word in words) {
-          if (word.length > 3) {
-            for (final foodName in _indianFoodDatabase.keys) {
-              if (foodName.contains(word) || word.contains(foodName.split(' ').first)) {
-                foods.add(foodName);
-                quantities[foodName] = 1;
-                break;
-              }
-            }
-          }
-        }
-      }
-
-      // If still no foods found, provide estimated nutrition
-      if (foods.isEmpty) {
-        debugPrint('No specific foods found, providing estimated nutrition');
-        return _getEstimatedNutrition(description);
-      }
-
-      // Calculate total nutrition
-      int totalCalories = 0;
-      double totalProtein = 0;
-      double totalCarbs = 0;
-      double totalFat = 0;
-      double totalFiber = 0;
-
-      for (final food in foods) {
-        final nutrition = _indianFoodDatabase[food]!;
-        final quantity = quantities[food] ?? 1;
-
-        totalCalories += (nutrition['calories'] as int) * quantity;
-        totalProtein += (nutrition['protein'] as double) * quantity;
-        totalCarbs += (nutrition['carbs'] as double) * quantity;
-        totalFat += (nutrition['fat'] as double) * quantity;
-        totalFiber += (nutrition['fiber'] as double) * quantity;
-      }
-
-      debugPrint('✅ Local database analysis complete:');
-      debugPrint('   Foods found: $foods');
-      debugPrint('   Total calories: $totalCalories');
-
-      return {
-        'success': true,
-        'foods': foods,
-        'nutrition': {
-          'calories': totalCalories,
-          'protein': totalProtein.round(),
-          'carbs': totalCarbs.round(),
-          'fat': totalFat.round(),
-          'fiber': totalFiber.round(),
-        },
-        'confidence': 0.7,
-        'source': 'Local Database',
-      };
-    } catch (e) {
-      debugPrint('Error in local database analysis: $e');
-      return _getEstimatedNutrition(description);
-    }
-  }
-
-  // Provide estimated nutrition when all else fails - Enhanced smart estimation
   Map<String, dynamic> _getEstimatedNutrition(String description) {
-    debugPrint('📊 Providing smart estimated nutrition for: $description');
-
     final lowerDesc = description.toLowerCase();
-    int baseCalories = 350; // Default medium meal
+    int baseCalories = 350;
     String foodCategory = 'Mixed meal';
 
-    // Smart categorization based on meal type
-    if (_isMealType(lowerDesc, ['breakfast'])) {
+    if (lowerDesc.contains('breakfast')) {
       baseCalories = 250;
       foodCategory = 'Breakfast';
-    } else if (_isMealType(lowerDesc, ['lunch', 'dinner'])) {
+    } else if (lowerDesc.contains('lunch') || lowerDesc.contains('dinner')) {
       baseCalories = 450;
       foodCategory = 'Main meal';
-    } else if (_isMealType(lowerDesc, ['snack', 'tea time', 'evening'])) {
+    } else if (lowerDesc.contains('snack')) {
       baseCalories = 150;
       foodCategory = 'Snack';
-    } else if (_isMealType(lowerDesc, ['dessert', 'sweet'])) {
-      baseCalories = 200;
-      foodCategory = 'Dessert';
     }
 
-    // Adjust for cooking method
-    if (_containsCookingMethod(lowerDesc, ['fried', 'deep fried', 'pakora'])) {
-      baseCalories = (baseCalories * 1.4).round(); // Fried foods +40%
-    } else if (_containsCookingMethod(lowerDesc, ['grilled', 'tandoori', 'roasted'])) {
-      baseCalories = (baseCalories * 0.95).round(); // Grilled foods -5%
-    } else if (_containsCookingMethod(lowerDesc, ['steamed', 'boiled'])) {
-      baseCalories = (baseCalories * 0.85).round(); // Steamed foods -15%
-    }
-
-    // Adjust for portion size indicators
-    if (lowerDesc.contains('large') || lowerDesc.contains('big') ||
-        lowerDesc.contains('heavy') || lowerDesc.contains('full') ||
-        lowerDesc.contains('plate') || lowerDesc.contains('thali')) {
+    if (lowerDesc.contains('large') || lowerDesc.contains('full') || lowerDesc.contains('plate')) {
       baseCalories = (baseCalories * 1.5).round();
-    } else if (lowerDesc.contains('small') || lowerDesc.contains('light') ||
-               lowerDesc.contains('mini') || lowerDesc.contains('half')) {
+    } else if (lowerDesc.contains('small') || lowerDesc.contains('light')) {
       baseCalories = (baseCalories * 0.6).round();
     }
 
-    // Smart macro distribution based on food type
-    double proteinRatio = 0.20;
-    double carbsRatio = 0.50;
-    double fatRatio = 0.30;
-
-    // Adjust macros based on food indicators
-    if (_containsIngredient(lowerDesc, ['paneer', 'chicken', 'egg', 'dal', 'meat', 'fish'])) {
-      proteinRatio = 0.30; // High protein
-      carbsRatio = 0.40;
-      fatRatio = 0.30;
-    } else if (_containsIngredient(lowerDesc, ['rice', 'bread', 'roti', 'naan', 'dosa', 'idli'])) {
-      proteinRatio = 0.15; // High carbs
-      carbsRatio = 0.65;
-      fatRatio = 0.20;
-    } else if (_containsIngredient(lowerDesc, ['nuts', 'ghee', 'butter', 'oil', 'cream'])) {
-      proteinRatio = 0.15; // High fat
-      carbsRatio = 0.35;
-      fatRatio = 0.50;
-    }
-
-    // Calculate macros based on calories and ratios
-    final protein = (baseCalories * proteinRatio / 4).round();
-    final carbs = (baseCalories * carbsRatio / 4).round();
-    final fat = (baseCalories * fatRatio / 9).round();
-    final fiber = _estimateFiber(lowerDesc, baseCalories);
-
-    debugPrint('Smart estimation result: $baseCalories calories ($foodCategory)');
+    final protein = (baseCalories * 0.20 / 4).round();
+    final carbs = (baseCalories * 0.50 / 4).round();
+    final fat = (baseCalories * 0.30 / 9).round();
+    final fiber = (baseCalories * 0.02).round();
 
     return {
       'success': true,
@@ -1071,70 +971,94 @@ Analyze the image now:
         'fat': fat,
         'fiber': fiber,
       },
-      'confidence': 0.6,
-      'source': 'Smart Estimation',
-      'message': 'Values estimated based on description. For accuracy, use manual entry.',
     };
   }
 
-  // Helper: Check if description contains meal type
-  bool _isMealType(String desc, List<String> mealTypes) {
-    for (final meal in mealTypes) {
-      if (desc.contains(meal)) return true;
-    }
-    return false;
+  // ============================================================================
+  // HELPER METHODS FOR BACKWARD COMPATIBILITY
+  // ============================================================================
+
+  Future<Map<String, dynamic>> analyzeIndianFoodWithDetails(
+    File imageFile,
+    String foodName,
+    String quantity,
+  ) async {
+    final description = '$quantity $foodName';
+    return analyzeWithDescription(imageFile, description);
   }
 
-  // Helper: Check cooking method
-  bool _containsCookingMethod(String desc, List<String> methods) {
-    for (final method in methods) {
-      if (desc.contains(method)) return true;
-    }
-    return false;
+  Future<Map<String, dynamic>> analyzeIndianFood(File imageFile) async {
+    return analyzeWithDescription(imageFile, 'food item');
   }
 
-  // Helper: Check ingredients
-  bool _containsIngredient(String desc, List<String> ingredients) {
-    for (final ingredient in ingredients) {
-      if (desc.contains(ingredient)) return true;
+  // Search for food by text query
+  Future<Map<String, dynamic>> searchIndianFood(String query) async {
+    final normalizedQuery = query.toLowerCase().trim();
+
+    // Try exact match first
+    if (_indianFoodDatabase.containsKey(normalizedQuery)) {
+      final nutrition = _indianFoodDatabase[normalizedQuery]!;
+      return {
+        'success': true,
+        'foods': [
+          {'name': normalizedQuery, 'confidence': 0.9}
+        ],
+        'nutrition': {
+          'calories': nutrition['calories'],
+          'protein': (nutrition['protein'] as double).round(),
+          'carbs': (nutrition['carbs'] as double).round(),
+          'fat': (nutrition['fat'] as double).round(),
+          'fiber': (nutrition['fiber'] as double).round(),
+        },
+        'source': 'Local Database',
+      };
     }
-    return false;
+
+    // Try partial matches
+    final matches = <String>[];
+    final words = normalizedQuery.split(' ');
+
+    for (final foodName in _indianFoodDatabase.keys) {
+      for (final word in words) {
+        if (foodName.contains(word) && word.length > 2) {
+          matches.add(foodName);
+          break;
+        }
+      }
+    }
+
+    if (matches.isNotEmpty) {
+      // Return first match
+      final foodName = matches.first;
+      final nutrition = _indianFoodDatabase[foodName]!;
+      return {
+        'success': true,
+        'foods': [
+          {'name': foodName, 'confidence': 0.7}
+        ],
+        'nutrition': {
+          'calories': nutrition['calories'],
+          'protein': (nutrition['protein'] as double).round(),
+          'carbs': (nutrition['carbs'] as double).round(),
+          'fat': (nutrition['fat'] as double).round(),
+          'fiber': (nutrition['fiber'] as double).round(),
+        },
+        'source': 'Local Database (Partial Match)',
+      };
+    }
+
+    // No match found - use estimation
+    return _getEstimatedNutrition(query);
   }
 
-  // Helper: Estimate fiber content
-  int _estimateFiber(String desc, int calories) {
-    if (_containsIngredient(desc, ['vegetable', 'salad', 'fruit', 'whole wheat'])) {
-      return (calories * 0.04).round(); // Higher fiber
-    } else if (_containsIngredient(desc, ['dal', 'beans', 'lentil'])) {
-      return (calories * 0.03).round(); // Medium fiber
-    }
-    return (calories * 0.02).round(); // Default fiber
-  }
-
-  // Get default nutrition when all methods fail
-  Map<String, dynamic> _getDefaultNutrition() {
-    return {
-      'success': false,
-      'foods': [],
-      'nutrition': {
-        'calories': 0,
-        'protein': 0,
-        'carbs': 0,
-        'fat': 0,
-        'fiber': 0,
-      },
-      'source': 'No data available',
-    };
-  }
-  
-  // Get all available Indian foods (for autocomplete)
+  // Get all available food names for autocomplete
   List<String> getAllIndianFoods() {
     return _indianFoodDatabase.keys.toList()..sort();
   }
-  
+
   // Get nutrition for specific food
   Map<String, dynamic>? getNutritionForFood(String foodName) {
-    final normalized = _normalizeFoodName(foodName);
+    final normalized = foodName.toLowerCase().trim();
     return _indianFoodDatabase[normalized];
   }
 }

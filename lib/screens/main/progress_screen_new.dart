@@ -13,7 +13,7 @@ import '../../widgets/streak_display_widget.dart';
 import '../../widgets/achievements/achievement_grid.dart';
 import '../../widgets/streak_calendar_widget.dart';
 import '../../widgets/milestone_progress_ring.dart';
-import '../../widgets/weight_progress_chart.dart';
+import '../../widgets/modern_weight_chart.dart';
 import '../../services/achievement_checker.dart';
 import 'weight_details_screen.dart';
 // import 'dart:math' as math; // Not needed anymore - no random data
@@ -43,6 +43,13 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
     _animationController.forward();
+
+    // Load fresh data when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final streakProvider = context.read<StreakProvider>();
+      streakProvider.loadTodayMetrics();
+      streakProvider.loadUserStreak();
+    });
   }
 
   @override
@@ -93,19 +100,25 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
   }
 
   Widget _buildProgressTab(UserProvider userProvider, NutritionProvider nutritionProvider, HealthProvider healthProvider, StreakProvider streakProvider) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
+    return RefreshIndicator(
+      onRefresh: () async {
+        // Refresh all data
+        await Future.wait([
+          streakProvider.loadTodayMetrics(),
+          streakProvider.loadUserStreak(),
+          healthProvider.fetchMetrics(),
+          nutritionProvider.loadDataFromSupabase(),
+        ]);
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Add StreakDisplayWidget at the top for grace period visibility
+          // Add StreakDisplayWidget at the top (contains grace period)
           const StreakDisplayWidget(isCompact: false),
           const SizedBox(height: 20),
-
-          // Grace Period Warning Banner (if applicable)
-          if (streakProvider.isInGracePeriod)
-            _buildGracePeriodWarning(streakProvider),
 
           Text(
             'Today\'s Summary',
@@ -115,6 +128,10 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
             ),
           ),
           const SizedBox(height: 20),
+
+          // Today's Goals Checklist
+          _buildTodaysGoalsChecklist(healthProvider, nutritionProvider, streakProvider),
+          const SizedBox(height: 24),
 
           // Centered Milestone Progress Ring - Main Feature (Moved to First)
           Center(
@@ -131,7 +148,7 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
           const SizedBox(height: 32),
 
           // Weight Progress Chart
-          WeightProgressChart(
+          ModernWeightChart(
             isCompact: true,
             onTap: () {
               Navigator.push(
@@ -143,6 +160,7 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
             },
           ),
         ],
+      ),
       ),
     );
   }
@@ -185,6 +203,75 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
     );
   }
 
+  Widget _buildTodaysGoalsChecklist(HealthProvider healthProvider, NutritionProvider nutritionProvider, StreakProvider streakProvider) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    // Get goal achievement status from StreakProvider's todayMetrics
+    final todayMetrics = streakProvider.todayMetrics;
+    final stepsAchieved = todayMetrics?.stepsAchieved ?? false;
+    final sleepAchieved = todayMetrics?.sleepAchieved ?? false;
+    final waterAchieved = todayMetrics?.waterAchieved ?? false;
+    final nutritionAchieved = todayMetrics?.nutritionAchieved ?? false;
+    final caloriesAchieved = todayMetrics?.caloriesAchieved ?? false;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildGoalCheckItem('Steps', stepsAchieved, Icons.directions_walk, isDarkMode),
+          const SizedBox(height: 12),
+          _buildGoalCheckItem('Sleep', sleepAchieved, Icons.bedtime, isDarkMode),
+          const SizedBox(height: 12),
+          _buildGoalCheckItem('Water', waterAchieved, Icons.water_drop, isDarkMode),
+          const SizedBox(height: 12),
+          _buildGoalCheckItem('Nutrition', nutritionAchieved, Icons.restaurant, isDarkMode),
+          const SizedBox(height: 12),
+          _buildGoalCheckItem('Calories', caloriesAchieved, Icons.local_fire_department, isDarkMode),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGoalCheckItem(String label, bool achieved, IconData icon, bool isDarkMode) {
+    return Row(
+      children: [
+        Icon(
+          achieved ? Icons.check_circle : Icons.radio_button_unchecked,
+          color: achieved ? AppTheme.successGreen : (isDarkMode ? Colors.grey[600] : Colors.grey[400]),
+          size: 24,
+        ),
+        const SizedBox(width: 12),
+        Icon(
+          icon,
+          color: achieved ? AppTheme.primaryAccent : (isDarkMode ? Colors.grey[600] : Colors.grey[400]),
+          size: 20,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: achieved
+                ? (isDarkMode ? Colors.white : Colors.black87)
+                : (isDarkMode ? Colors.grey[500] : Colors.grey[600]),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildSummarySection(UserProvider userProvider, NutritionProvider nutritionProvider, HealthProvider healthProvider, StreakProvider streakProvider) {
     final todayNutrition = nutritionProvider.todayNutrition;
@@ -678,7 +765,7 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
     final currentStreak = streakProvider.currentStreak;
     final daysToNextMilestone = _calculateDaysToNextMilestone(currentStreak);
     final message = streakProvider.getGracePeriodMessage();
-    
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -703,27 +790,12 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  message.isNotEmpty ? message :
-                  'You\'re on a $currentStreak-day streak! Just $daysToNextMilestone more days to the next milestone!',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    height: 1.4,
-                  ),
-                ),
-                if (streakProvider.isInGracePeriod) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '⚠️ Grace Period: ${streakProvider.remainingGraceDays} excuse days remaining',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.errorRed,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ],
+            child: Text(
+              message.isNotEmpty ? message :
+              'You\'re on a $currentStreak-day streak! Just $daysToNextMilestone more days to the next milestone!',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                height: 1.4,
+              ),
             ),
           ),
         ],

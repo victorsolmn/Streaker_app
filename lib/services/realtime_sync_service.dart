@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'supabase_service.dart';
+import 'database_sync_service.dart';
 import '../providers/nutrition_provider.dart';
 import '../providers/health_provider.dart';
 import '../providers/user_provider.dart';
@@ -70,18 +71,30 @@ class RealtimeSyncService {
   Future<void> syncAll() async {
     if (!_isOnline || _isSyncing) return;
     if (_supabase.currentUser == null) return;
-    
+
     _isSyncing = true;
     onSyncStatusChanged?.call(true);
-    
+
     try {
+      // First sync all local data to Supabase
       await Future.wait([
         _syncNutritionData(),
         _syncHealthMetrics(),
         _syncUserProfile(),
         _syncStreaks(),
       ]);
-      
+
+      debugPrint('✅ Local data synced to Supabase');
+
+      // NEW: Force database-level sync to recalculate everything
+      try {
+        final dbSync = DatabaseSyncService();
+        await dbSync.syncToday();
+        debugPrint('✅ Database sync completed - goals and streaks updated');
+      } catch (e) {
+        debugPrint('⚠️ Database sync failed (non-critical): $e');
+      }
+
       debugPrint('✅ All data synced successfully');
     } catch (e) {
       debugPrint('❌ Sync error: $e');

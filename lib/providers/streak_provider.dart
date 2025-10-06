@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/streak_model.dart';
 import '../services/supabase_service.dart';
+import '../services/database_sync_service.dart';
 import 'health_provider.dart';
 import 'nutrition_provider.dart';
 import 'user_provider.dart';
@@ -199,14 +200,18 @@ class StreakProvider extends ChangeNotifier {
       
       // Calculate achievements
       final finalMetrics = updatedMetrics.calculateAchievements();
-      
+
       // Save to Supabase
       await saveMetrics(finalMetrics);
-      
-      // Check and update streak if all goals achieved
-      if (finalMetrics.allGoalsAchieved) {
-        await checkAndUpdateStreak();
-      }
+
+      // Trigger database sync to ensure everything is calculated correctly
+      // This will aggregate nutrition, recalculate goals, and update streaks
+      final dbSync = DatabaseSyncService();
+      await dbSync.syncToday();
+
+      // Reload updated data
+      await loadUserStreak();
+      await loadTodayMetrics();
       
     } catch (e) {
       debugPrint('Error syncing metrics: $e');
@@ -248,21 +253,48 @@ class StreakProvider extends ChangeNotifier {
   Future<void> checkAndUpdateStreak() async {
     try {
       if (_todayMetrics == null || !_todayMetrics!.allGoalsAchieved) {
+        debugPrint('⚠️ Streak not updated: goals not achieved');
         return;
       }
-      
+
       final userId = _supabaseService.currentUser?.id;
       if (userId == null) return;
-      
-      // The database trigger will handle streak updates
-      // We just need to reload the streak data
-      await loadUserStreak();
-      
-      // Show achievement notification
-      _showStreakNotification();
-      
+
+      debugPrint('🔥 All goals achieved! Triggering streak update...');
+
+      // Use database function to ensure proper calculation
+      final dbSync = DatabaseSyncService();
+      final result = await dbSync.syncToday();
+
+      if (result != null) {
+        // Update local data from database result
+        if (result['streak'] != null) {
+          _userStreak = UserStreak.fromJson(result['streak']);
+          debugPrint('✅ Streak updated via database: ${_userStreak?.currentStreak} days');
+        }
+
+        if (result['health_metrics'] != null) {
+          _todayMetrics = UserDailyMetrics.fromJson(result['health_metrics']);
+        }
+
+        // Show achievement notification
+        _showStreakNotification();
+
+        notifyListeners();
+      } else {
+        // Fallback: reload from database
+        debugPrint('⚠️ Database sync returned null, falling back to reload');
+        await loadUserStreak();
+      }
+
     } catch (e) {
-      debugPrint('Error updating streak: $e');
+      debugPrint('❌ Error updating streak: $e');
+      // Try fallback reload
+      try {
+        await loadUserStreak();
+      } catch (e2) {
+        debugPrint('❌ Fallback reload also failed: $e2');
+      }
     }
   }
   
