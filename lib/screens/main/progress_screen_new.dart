@@ -136,8 +136,6 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
           ),
           const SizedBox(height: 32),
 
-          _buildSummarySection(userProvider, nutritionProvider, healthProvider, streakProvider),
-          const SizedBox(height: 32),
           _buildWeeklyProgressChart(nutritionProvider, healthProvider, streakProvider),
           const SizedBox(height: 32),
 
@@ -264,86 +262,6 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildSummarySection(UserProvider userProvider, NutritionProvider nutritionProvider, HealthProvider healthProvider, StreakProvider streakProvider) {
-    final todayNutrition = nutritionProvider.todayNutrition;
-    final caloriesConsumed = todayNutrition.totalCalories;
-
-    // Get actual calories burned from health provider
-    final caloriesBurned = healthProvider.todayCaloriesBurned.toInt();
-    // Use StreakProvider for streak data
-    final activeStreak = streakProvider.currentStreak;
-
-    return Row(
-      children: [
-        Expanded(
-          child: _buildSummaryCard(
-            value: caloriesBurned.toString(),
-            label: 'Calories\nBurned',
-            color: AppTheme.primaryAccent,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildSummaryCard(
-            value: caloriesConsumed.toString(),
-            label: 'Calories\nConsumed',
-            color: Colors.blue,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildSummaryCard(
-            value: activeStreak.toString(),
-            label: 'Active\nStreak',
-            color: Colors.green,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSummaryCard({
-    required String value,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: color,
-              fontSize: 28,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppTheme.textSecondary,
-              height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
     );
   }
 
