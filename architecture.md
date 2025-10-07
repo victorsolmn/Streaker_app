@@ -318,12 +318,84 @@ Supabase (profiles)
 4. Code signing
 5. Store uploads
 
+### Android Signing Configuration (Updated October 2025)
+
+#### Upload Key Details
+- **Keystore File:** `/android/app/upload-keystore.jks`
+- **Key Alias:** `upload`
+- **Store Password:** `str3ak3r2024`
+- **Key Password:** `str3ak3r2024`
+- **SHA-1 Fingerprint:** `61:50:2F:16:80:8F:F8:A2:81:D7:75:91:92:6C:B9:A2:D2:B8:85:30`
+- **Valid From:** October 9, 2025, 9:47 AM UTC
+
+#### Signing Configuration Files
+```
+android/
+├── key.properties          # Signing credentials (NOT in git)
+│   ├── storePassword=str3ak3r2024
+│   ├── keyPassword=str3ak3r2024
+│   ├── keyAlias=upload
+│   └── storeFile=upload-keystore.jks
+└── app/
+    └── upload-keystore.jks # Keystore file (NOT in git)
+```
+
+#### build.gradle.kts Configuration
+```kotlin
+// Load key.properties file
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+signingConfigs {
+    create("release") {
+        keyAlias = keystoreProperties["keyAlias"] as String?
+        keyPassword = keystoreProperties["keyPassword"] as String?
+        storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+        storePassword = keystoreProperties["storePassword"] as String?
+    }
+}
+```
+
+#### Google Play App Signing
+- **Enabled:** Yes (Google manages final signing key)
+- **App Signing Key SHA-1:** `48:47:13:BE:0D:9D:87:A2:12:22:72:61:28:FE:76:86:1A:79:3F:2B`
+- **Upload Key SHA-1:** `61:50:2F:16:80:8F:F8:A2:81:D7:75:91:92:6C:B9:A2:D2:B8:85:30`
+
+#### Build Commands
+```bash
+# Clean build
+flutter clean
+
+# Build release AAB
+flutter build appbundle --release
+
+# Output location
+build/app/outputs/bundle/release/app-release.aab
+```
+
+#### Security Notes
+1. **Never commit** keystore or key.properties to git
+2. Both files are in `.gitignore`
+3. Backup keystore to secure cloud storage
+4. If keystore is lost, request upload key reset via Google Play Console
+5. Upload key reset takes 48 hours to process
+
+#### Key Reset History
+- **October 7, 2025:** Original keystore lost, upload key reset requested
+- **October 9, 2025:** New upload key activated
+- **Previous SHA-1:** `D6:07:C1:0A:2E:92:4D:EE:90:42:8B:50:71:79:8B:B7:3D:06:9B:B8` (deprecated)
+
 ### Release Checklist
 - Database migrations
 - API compatibility
 - Force update configuration
 - Privacy policy updates
 - Store listing updates
+- Verify signing configuration
+- Backup keystore to secure location
 
 ## Monitoring & Analytics
 

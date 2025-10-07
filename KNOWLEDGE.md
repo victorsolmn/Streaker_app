@@ -3,6 +3,51 @@
 ## Project Overview
 Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracking application that integrates with Samsung Health, Google Fit, and Apple HealthKit to provide users with real-time health metrics, nutrition tracking, and achievement systems. The app features a unified OTP authentication system for seamless and secure user access.
 
+## Recent Updates (October 2025 - Version 1.0.10+13)
+
+### Upload Key Reset and New Signing Configuration (October 7, 2025)
+**Issue:** Original upload keystore file was lost, preventing new app updates to Google Play Store
+
+**Solution:**
+- Requested upload key reset through Google Play Console
+- Generated new upload keystore with matching certificate requirements
+- Updated build configuration with new signing credentials
+- Built version 1.0.10+13 with new upload key
+
+**Timeline:**
+- Oct 7, 2025: Upload key reset requested and approved
+- Oct 9, 2025, 9:47 AM UTC: New upload key becomes active
+- After Oct 9: Can upload new builds to Play Store
+
+**New Keystore Details:**
+- **Location:** `/android/app/upload-keystore.jks`
+- **Alias:** upload
+- **Passwords:** str3ak3r2024 (store and key)
+- **SHA-1 Fingerprint:** `61:50:2F:16:80:8F:F8:A2:81:D7:75:91:92:6C:B9:A2:D2:B8:85:30`
+- **Configuration File:** `/android/key.properties`
+
+**Files Created/Modified:**
+- `/android/app/upload-keystore.jks` - New upload keystore (NEVER commit to git)
+- `/android/key.properties` - Signing configuration (NEVER commit to git)
+- Desktop backup: `/Users/Vicky/Desktop/upload-keystore.jks`
+- Desktop backup: `/Users/Vicky/Desktop/upload_certificate.pem`
+
+**Build Information:**
+- **AAB File:** `streaker_v1.0.10_build13_NEW_KEY.aab` (47 MB)
+- **Available After:** October 9, 2025
+- **Includes:** iOS HealthKit Data Priority System, Streak System Rebuild, GROK API integration
+
+**IMPORTANT SECURITY NOTES:**
+1. Keystore and key.properties files are in `.gitignore`
+2. Backup keystore stored on Desktop and should be backed up to secure cloud storage
+3. Never share keystore passwords publicly
+4. If keystore is lost again, will need another upload key reset
+
+**Production Release Requirements:**
+- Need 12 testers for closed testing (currently 7)
+- Must run closed test for minimum 14 days
+- Can only promote to production after meeting these requirements
+
 ## Recent Updates (December 2024 - Version 1.0.4)
 
 ### Privacy Policy & Google Play Compliance
