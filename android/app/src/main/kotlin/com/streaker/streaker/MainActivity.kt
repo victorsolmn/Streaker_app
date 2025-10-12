@@ -62,14 +62,38 @@ class MainActivity: FlutterFragmentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Initialize Health Connect client
-        val providerPackageName = "com.google.android.apps.healthdata"
-        healthConnectClient = HealthConnectClient.getOrCreate(this, providerPackageName)
-        
-        Log.d(TAG, "Health Connect client initialized")
+
+        // Initialize Health Connect client with availability check
+        try {
+            val providerPackageName = "com.google.android.apps.healthdata"
+            val sdkStatus = HealthConnectClient.getSdkStatus(this, providerPackageName)
+
+            when (sdkStatus) {
+                HealthConnectClient.SDK_AVAILABLE -> {
+                    healthConnectClient = HealthConnectClient.getOrCreate(this, providerPackageName)
+                    Log.d(TAG, "Health Connect client initialized successfully")
+                }
+                HealthConnectClient.SDK_UNAVAILABLE -> {
+                    Log.w(TAG, "Health Connect not installed - app will function with limited health features")
+                }
+                HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                    Log.w(TAG, "Health Connect update required - app will function with limited health features")
+                }
+                else -> {
+                    Log.w(TAG, "Health Connect status unknown: $sdkStatus - app will function with limited health features")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Health Connect - app will function with limited health features", e)
+            // App continues without Health Connect - graceful degradation
+        }
     }
-    
+
+    // Helper method to check if Health Connect client is initialized
+    private fun isHealthConnectAvailable(): Boolean {
+        return ::healthConnectClient.isInitialized
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
@@ -145,12 +169,18 @@ class MainActivity: FlutterFragmentActivity() {
     private fun requestPermissions(result: MethodChannel.Result) {
         coroutineScope.launch {
             try {
+                if (!isHealthConnectAvailable()) {
+                    Log.w(TAG, "Health Connect not available - cannot request permissions")
+                    result.error("UNAVAILABLE", "Health Connect is not available on this device", null)
+                    return@launch
+                }
+
                 Log.d(TAG, "=== REQUESTING HEALTH PERMISSIONS ===")
                 Log.d(TAG, "Requesting permissions for ${permissions.size} data types:")
                 permissions.forEachIndexed { index, permission ->
                     Log.d(TAG, "  ${index + 1}. $permission")
                 }
-                
+
                 // Check which permissions are already granted
                 val granted = healthConnectClient.permissionController.getGrantedPermissions()
                 Log.d(TAG, "Already granted: ${granted.size} permissions")
@@ -216,6 +246,12 @@ class MainActivity: FlutterFragmentActivity() {
     
     private suspend fun checkPermissionsAndRespond(result: MethodChannel.Result? = null) {
         try {
+            if (!isHealthConnectAvailable()) {
+                Log.w(TAG, "Health Connect not available - cannot check permissions")
+                result?.error("UNAVAILABLE", "Health Connect is not available on this device", null)
+                return
+            }
+
             val granted = healthConnectClient.permissionController.getGrantedPermissions()
             Log.d(TAG, "=== PERMISSION STATUS CHECK ===")
             Log.d(TAG, "Granted permissions: ${granted.size} out of ${permissions.size}")
@@ -447,9 +483,21 @@ class MainActivity: FlutterFragmentActivity() {
     private fun readAllHealthData(result: MethodChannel.Result) {
         coroutineScope.launch {
             try {
+                if (!isHealthConnectAvailable()) {
+                    Log.w(TAG, "Health Connect not available - returning empty health data")
+                    result.success(mapOf(
+                        "steps" to 0,
+                        "calories" to 0,
+                        "distance" to 0.0,
+                        "heartRate" to 0,
+                        "sleep" to 0.0
+                    ))
+                    return@launch
+                }
+
                 val now = Instant.now()
                 val startOfDay = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS).toInstant()
-                
+
                 Log.d(TAG, "=== Fetching all health data ===")
                 Log.d(TAG, "Time range: $startOfDay to $now")
                 

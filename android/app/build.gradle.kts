@@ -25,6 +25,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // Enable core library desugaring to support java.time API on Android < 26
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -72,17 +74,20 @@ flutter {
 }
 
 dependencies {
+    // Core library desugaring for java.time API support on Android < 26
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
     // Health Connect native SDK
     implementation("androidx.health.connect:connect-client:1.1.0-rc03")
-    
+
     // Coroutines for async operations
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
-    
+
     // Required for Health Connect
     implementation("androidx.activity:activity-ktx:1.9.0")
     implementation("androidx.fragment:fragment-ktx:1.7.0")
-    
+
     // WorkManager for background sync
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 }
