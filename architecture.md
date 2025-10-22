@@ -155,13 +155,19 @@ Initialization Sequence:
 4. Attempt Supabase load (blocked if live data exists)
 ```
 
-#### Nutrition Data Flow
+#### Nutrition Data Flow (Updated October 22, 2025)
 ```
 User Input
     → NutritionProvider
-    → SupabaseService
-    → Supabase (nutrition_entries)
+    → SupabaseService.saveNutritionEntry()
+    → Direct INSERT to Supabase (nutrition_entries table)
     → UI Updates
+
+IMPORTANT: No sync to health_metrics table
+- nutrition_entries: Stores food/nutrition data (calories, protein, carbs, fat, fiber)
+- health_metrics: Stores health tracking data (steps, heart_rate, sleep_hours)
+- These tables remain separate for proper separation of concerns
+- Migration 006 removed sync_nutrition_to_health_metrics() trigger function
 ```
 
 #### Profile Settings Flow
@@ -199,8 +205,9 @@ Supabase (profiles)
 - `user_id` (uuid)
 - `food_name` (text)
 - `calories` (integer)
-- `protein`, `carbs`, `fat` (float)
+- `protein`, `carbs`, `fat`, `fiber` (float)
 - `created_at` (timestamp)
+- NOTE: Saves directly to this table, no sync to health_metrics (as of Migration 006)
 
 **streaks**
 - `user_id` (uuid, primary key)
