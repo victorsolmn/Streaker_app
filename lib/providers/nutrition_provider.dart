@@ -385,19 +385,29 @@ class NutritionProvider with ChangeNotifier {
   }
 
   /// Trigger database-level sync to aggregate nutrition and update goals/streaks
+  /// UPDATED: Now uses new nutrition-based sync function
   Future<void> _triggerDatabaseSync() async {
     try {
-      final dbSync = DatabaseSyncService();
-      final result = await dbSync.syncToday();
+      final userId = _supabaseService.currentUser?.id;
+      if (userId == null) return;
 
-      if (result != null) {
-        debugPrint('✅ NutritionProvider: Database sync completed');
-        debugPrint('   Goals achieved: ${result['health_metrics']?['all_goals_achieved']}');
-        debugPrint('   Current streak: ${result['streak']?['current_streak']}');
+      // Call the new sync_nutrition_and_streaks database function
+      final response = await _supabaseService.client
+          .rpc('sync_nutrition_and_streaks', params: {
+        'p_user_id': userId,
+        'p_date': DateTime.now().toIso8601String().split('T')[0], // Today's date in YYYY-MM-DD
+      });
+
+      if (response != null) {
+        debugPrint('✅ NutritionProvider: Nutrition sync completed');
+        debugPrint('   Total calories: ${response['summary']?['total_calories']}');
+        debugPrint('   Goal achieved: ${response['summary']?['goal_achieved']}');
+        debugPrint('   Current streak: ${response['streak']?['current_streak']}');
       }
     } catch (e) {
       debugPrint('⚠️ NutritionProvider: Database sync failed (non-critical): $e');
-      // Non-critical error - triggers will handle it eventually
+      // Non-critical error - database triggers will handle it automatically
+      // This is just for immediate feedback
     }
   }
 

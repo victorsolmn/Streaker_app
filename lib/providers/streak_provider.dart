@@ -154,56 +154,40 @@ class StreakProvider extends ChangeNotifier {
   }
   
   // Load recent metrics for history (nutrition-based)
+  // UPDATED: Now uses daily_nutrition_summary table for better performance
   Future<void> loadRecentMetrics() async {
     try {
       final userId = _supabaseService.currentUser?.id;
       if (userId == null) return;
 
-      // Get user's calorie target
-      final profileResponse = await _supabaseService.client
-          .from('profiles')
-          .select('daily_calories_target')
-          .eq('id', userId)
-          .maybeSingle();
-
-      final caloriesGoal = profileResponse?['daily_calories_target'] ?? 2000;
-
-      // Get nutrition entries from last 30 days
+      // Get daily nutrition summaries from last 30 days (includes goal_achieved field)
       final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
       final dateStr = '${thirtyDaysAgo.year}-${thirtyDaysAgo.month.toString().padLeft(2, '0')}-${thirtyDaysAgo.day.toString().padLeft(2, '0')}';
 
       final response = await _supabaseService.client
-          .from('nutrition_entries')
-          .select('date, calories')
+          .from('daily_nutrition_summary')
+          .select('date, total_calories, calorie_target, goal_achieved')
           .eq('user_id', userId)
           .gte('date', dateStr)
           .order('date', ascending: false);
 
-      // Group by date and calculate daily totals
-      final Map<String, int> dailyCalories = {};
+      // Create metrics from daily summaries
+      _recentMetrics = [];
       if (response != null && (response as List).isNotEmpty) {
-        for (var entry in response as List) {
-          final date = entry['date'] as String;
-          final calories = (entry['calories'] as num?)?.toInt() ?? 0;
-          dailyCalories[date] = (dailyCalories[date] ?? 0) + calories;
+        for (var summary in response as List) {
+          final date = DateTime.parse(summary['date'] as String);
+          final totalCalories = (summary['total_calories'] as num?)?.toInt() ?? 0;
+          final caloriesGoal = (summary['calorie_target'] as num?)?.toInt() ?? 2000;
+          final goalAchieved = summary['goal_achieved'] as bool? ?? false;
+
+          _recentMetrics.add(UserDailyMetrics(
+            userId: userId,
+            date: date,
+            caloriesConsumed: totalCalories,
+            caloriesGoal: caloriesGoal,
+          ).copyWith(nutritionAchieved: goalAchieved));
         }
       }
-
-      // Create metrics for each day
-      _recentMetrics = dailyCalories.entries.map((entry) {
-        final date = DateTime.parse(entry.key);
-        final totalCalories = entry.value;
-        final minCalories = (caloriesGoal * 0.8).toInt();
-        final maxCalories = (caloriesGoal * 1.1).toInt();
-        final goalAchieved = totalCalories >= minCalories && totalCalories <= maxCalories;
-
-        return UserDailyMetrics(
-          userId: userId,
-          date: date,
-          caloriesConsumed: totalCalories,
-          caloriesGoal: caloriesGoal,
-        ).copyWith(nutritionAchieved: goalAchieved);
-      }).toList();
 
       // Sort by date descending
       _recentMetrics.sort((a, b) => b.date.compareTo(a.date));
@@ -211,9 +195,17 @@ class StreakProvider extends ChangeNotifier {
       // Calculate current month's completed days
       _calculateMonthlyStats();
 
+      StreakLogger.logLoaded(
+        currentStreak: _userStreak?.currentStreak ?? 0,
+        longestStreak: _userStreak?.longestStreak ?? 0,
+        source: 'daily_nutrition_summary (${_recentMetrics.length} days)',
+      );
+
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading recent metrics: $e');
+      // Fallback to empty list instead of failing completely
+      _recentMetrics = [];
     }
   }
   
