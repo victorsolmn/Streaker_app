@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/achievement_provider.dart';
 import '../providers/streak_provider.dart';
-import '../providers/health_provider.dart';
 import '../models/achievement_model.dart';
 
 class AchievementChecker {
@@ -10,11 +9,9 @@ class AchievementChecker {
     try {
       final achievementProvider = context.read<AchievementProvider>();
       final streakProvider = context.read<StreakProvider>();
-      final healthProvider = context.read<HealthProvider>();
 
       await _checkStreakAchievements(streakProvider, achievementProvider);
-      await _checkWorkoutAchievements(healthProvider, achievementProvider);
-      await _checkSpecialAchievements(streakProvider, healthProvider, achievementProvider);
+      await _checkSpecialAchievements(streakProvider, achievementProvider);
     } catch (e) {
       debugPrint('Error checking achievements: $e');
     }
@@ -55,35 +52,12 @@ class AchievementChecker {
     }
   }
 
-  static Future<void> _checkWorkoutAchievements(
-    HealthProvider healthProvider,
-    AchievementProvider achievementProvider,
-  ) async {
-    // Check "Warm-up Warrior" - first workout
-    final totalWorkouts = healthProvider.todayWorkouts;
-    if (totalWorkouts > 0) {
-      final achievement = achievementProvider.getAchievementById('warm_up');
-      if (achievement != null && !achievement.isUnlocked) {
-        await achievementProvider.unlockAchievement('warm_up');
-        _showUnlockNotification(achievement);
-      }
-    }
-
-    // Note: For weekend and midnight workouts, we'd need to check
-    // the actual workout timestamps which would require more integration
-    // with the health metrics system
-  }
-
   static Future<void> _checkSpecialAchievements(
     StreakProvider streakProvider,
-    HealthProvider healthProvider,
     AchievementProvider achievementProvider,
   ) async {
     // Check "Comeback Kid" - requires tracking streak loss and recovery
-    // This would need additional state to track when a streak was lost
-    // and when it was recovered
-
-    // For now, we'll check if user has a current streak after having lost one
+    // User has a current streak after having lost one
     final currentStreak = streakProvider.currentStreak;
     final longestStreak = streakProvider.longestStreak;
 
@@ -92,37 +66,6 @@ class AchievementChecker {
       final achievement = achievementProvider.getAchievementById('comeback_kid');
       if (achievement != null && !achievement.isUnlocked) {
         await achievementProvider.unlockAchievement('comeback_kid');
-        _showUnlockNotification(achievement);
-      }
-    }
-
-    // Check "Sweatflix & Chill" - weekend workout
-    final now = DateTime.now();
-    if ((now.weekday == DateTime.saturday || now.weekday == DateTime.sunday) &&
-        healthProvider.todayWorkouts > 0) {
-      final achievement = achievementProvider.getAchievementById('sweatflix');
-      if (achievement != null && !achievement.isUnlocked) {
-        await achievementProvider.unlockAchievement('sweatflix');
-        _showUnlockNotification(achievement);
-      }
-    }
-
-    // Check "Gym Goblin" - midnight workout (between 12am-3am)
-    if ((now.hour >= 0 && now.hour <= 3) && healthProvider.todayWorkouts > 0) {
-      final achievement = achievementProvider.getAchievementById('gym_goblin');
-      if (achievement != null && !achievement.isUnlocked) {
-        await achievementProvider.unlockAchievement('gym_goblin');
-        _showUnlockNotification(achievement);
-      }
-    }
-
-    // Check "No Days Off Maniac" - 7 consecutive workout days
-    // This would require tracking workout history for the past 7 days
-    // For now, we'll use a simplified check based on current streak
-    if (streakProvider.currentStreak >= 7 && healthProvider.todayWorkouts > 0) {
-      final achievement = achievementProvider.getAchievementById('no_days_off');
-      if (achievement != null && !achievement.isUnlocked) {
-        await achievementProvider.unlockAchievement('no_days_off');
         _showUnlockNotification(achievement);
       }
     }
@@ -148,21 +91,12 @@ class AchievementChecker {
     await checkAllAchievements(context);
   }
 
-  // Call this after completing daily goals
+  // Call this after completing daily nutrition goals
   static Future<void> checkAfterGoalCompletion(BuildContext context) async {
     await checkAllAchievements(context);
   }
 
-  // Call this after logging a workout
-  static Future<void> checkAfterWorkout(BuildContext context) async {
-    final healthProvider = context.read<HealthProvider>();
-    final achievementProvider = context.read<AchievementProvider>();
-
-    await _checkWorkoutAchievements(healthProvider, achievementProvider);
-    await checkAllAchievements(context);
-  }
-
-  // Call this when streak updates
+  // Call this when streak updates (after nutrition tracking)
   static Future<void> checkAfterStreakUpdate(BuildContext context) async {
     final streakProvider = context.read<StreakProvider>();
     final achievementProvider = context.read<AchievementProvider>();

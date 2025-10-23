@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../providers/health_provider.dart';
 import '../providers/nutrition_provider.dart';
 import '../providers/streak_provider.dart';
 
@@ -58,36 +57,15 @@ class DailyResetService {
 
   Future<void> _resetSharedPreferencesDaily() async {
     if (_prefs == null) return;
-    
+
     final today = DateTime.now();
     final todayKey = '${today.year}-${today.month}-${today.day}';
-    
-    // Reset today's health metrics to 0 (will be updated from Samsung Health)
-    await _prefs!.setDouble('steps_$todayKey', 0);
-    await _prefs!.setDouble('calories_burned_$todayKey', 0);
-    await _prefs!.setDouble('heart_rate_$todayKey', 0);
-    await _prefs!.setDouble('sleep_$todayKey', 0);
-    await _prefs!.setDouble('distance_$todayKey', 0);
-    await _prefs!.setInt('water_$todayKey', 0);
-    await _prefs!.setInt('workouts_$todayKey', 0);
-    await _prefs!.setDouble('weight_$todayKey', 0);
-    await _prefs!.setInt('blood_oxygen_$todayKey', 0);
-    await _prefs!.setInt('exercise_minutes_$todayKey', 0);
-    await _prefs!.setInt('bp_systolic_$todayKey', 0);
-    await _prefs!.setInt('bp_diastolic_$todayKey', 0);
-    
-    // Reset "today_" keys used by RealtimeSyncService
-    await _prefs!.setInt('today_steps', 0);
-    await _prefs!.setInt('today_heart_rate', 0);
-    await _prefs!.setDouble('today_sleep', 0);
-    await _prefs!.setInt('today_calories_burned', 0);
-    await _prefs!.setDouble('today_distance', 0);
-    await _prefs!.setInt('today_water', 0);
-    await _prefs!.setDouble('today_weight', 0);
-    await _prefs!.setInt('today_blood_oxygen', 0);
-    await _prefs!.setInt('today_exercise_minutes', 0);
-    
-    debugPrint('SharedPreferences daily keys reset for $todayKey');
+
+    // Note: Health tracking has been removed from the app
+    // Only nutrition tracking remains, which uses date-based queries
+    // No daily reset needed for nutrition data
+
+    debugPrint('SharedPreferences daily reset completed for $todayKey');
   }
 
   void _setupMidnightTimer() {

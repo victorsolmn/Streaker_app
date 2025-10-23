@@ -125,7 +125,7 @@ class AppTheme {
       offset: const Offset(0, 4),
     ),
   ];
-  
+
   static List<BoxShadow> buttonShadow = [
     BoxShadow(
       color: primaryAccent.withOpacity(0.3),
@@ -133,6 +133,34 @@ class AppTheme {
       offset: const Offset(0, 6),
     ),
   ];
+
+  // Helper method to get theme-aware card shadow
+  static List<BoxShadow> getCardShadow(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return [
+      BoxShadow(
+        color: isDark
+            ? Colors.black.withOpacity(0.3)
+            : Colors.black.withOpacity(0.06),
+        blurRadius: 10,
+        offset: const Offset(0, 4),
+      ),
+    ];
+  }
+
+  // Helper method to get theme-aware subtle shadow
+  static List<BoxShadow> getSubtleShadow(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return [
+      BoxShadow(
+        color: isDark
+            ? Colors.black.withOpacity(0.4)
+            : Colors.black.withOpacity(0.05),
+        blurRadius: 8,
+        offset: const Offset(0, 2),
+      ),
+    ];
+  }
 
   static ThemeData get lightTheme {
     return ThemeData(

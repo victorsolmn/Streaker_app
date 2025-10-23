@@ -19,7 +19,7 @@ class UserDailyMetrics {
   final double protein;
   final double carbs;
   final double fat;
-  final double fiber;
+  // NOTE: fiber field REMOVED - database doesn't have this column
   
   // Weight
   final double? weight;
@@ -57,7 +57,7 @@ class UserDailyMetrics {
     this.protein = 0,
     this.carbs = 0,
     this.fat = 0,
-    this.fiber = 0,
+    // NOTE: fiber parameter REMOVED
     this.weight,
     this.stepsGoal = 10000,
     this.caloriesGoal = 2000,
@@ -122,7 +122,7 @@ class UserDailyMetrics {
     'protein': protein,
     'carbs': carbs,
     'fat': fat,
-    'fiber': fiber,
+    // NOTE: fiber field REMOVED - database doesn't have this column
     if (weight != null) 'weight': weight,
     'steps_goal': stepsGoal,
     'calories_goal': caloriesGoal,
@@ -153,7 +153,7 @@ class UserDailyMetrics {
       protein: (json['protein'] ?? 0).toDouble(),
       carbs: (json['carbs'] ?? 0).toDouble(),
       fat: (json['fat'] ?? 0).toDouble(),
-      fiber: (json['fiber'] ?? 0).toDouble(),
+      // NOTE: fiber field REMOVED - database doesn't have this column
       weight: json['weight']?.toDouble(),
       stepsGoal: json['steps_goal'] ?? 10000,
       caloriesGoal: json['calories_goal'] ?? 2000,
@@ -186,7 +186,7 @@ class UserDailyMetrics {
     double? protein,
     double? carbs,
     double? fat,
-    double? fiber,
+    // NOTE: fiber parameter REMOVED
     double? weight,
     int? stepsGoal,
     int? caloriesGoal,
@@ -215,7 +215,7 @@ class UserDailyMetrics {
       protein: protein ?? this.protein,
       carbs: carbs ?? this.carbs,
       fat: fat ?? this.fat,
-      fiber: fiber ?? this.fiber,
+      // NOTE: fiber parameter REMOVED
       weight: weight ?? this.weight,
       stepsGoal: stepsGoal ?? this.stepsGoal,
       caloriesGoal: caloriesGoal ?? this.caloriesGoal,
@@ -247,24 +247,16 @@ class UserStreak {
   final String userId;
   final int currentStreak;
   final int longestStreak;
-  final int totalDaysCompleted;
-  
-  // Grace Period System (NEW)
+
+  // Grace Period System
   final int consecutiveMissedDays;
   final int graceDaysUsed;
   final int graceDaysAvailable;
   final DateTime? lastGraceResetDate;
-  
-  final DateTime? streakStartDate;
+
   final DateTime? lastCompletedDate;
   final DateTime? lastCheckedDate;
-  final DateTime? lastAttemptedDate; // NEW: Last day user tried
-  final int totalSteps;
-  final int totalCaloriesBurned;
-  final int totalWorkouts;
-  final double averageSleep;
-  final int perfectWeeks;
-  final int perfectMonths;
+  final DateTime? lastAttemptedDate; // Last day user tried
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -273,24 +265,16 @@ class UserStreak {
     required this.userId,
     this.currentStreak = 0,
     this.longestStreak = 0,
-    this.totalDaysCompleted = 0,
-    
+
     // Grace Period fields
     this.consecutiveMissedDays = 0,
     this.graceDaysUsed = 0,
     this.graceDaysAvailable = 2,
     this.lastGraceResetDate,
-    
-    this.streakStartDate,
+
     this.lastCompletedDate,
     this.lastCheckedDate,
     this.lastAttemptedDate,
-    this.totalSteps = 0,
-    this.totalCaloriesBurned = 0,
-    this.totalWorkouts = 0,
-    this.averageSleep = 0,
-    this.perfectWeeks = 0,
-    this.perfectMonths = 0,
     this.createdAt,
     this.updatedAt,
   });
@@ -367,24 +351,16 @@ class UserStreak {
     'user_id': userId,
     'current_streak': currentStreak,
     'longest_streak': longestStreak,
-    'total_days_completed': totalDaysCompleted,
-    
+
     // Grace Period fields
     'consecutive_missed_days': consecutiveMissedDays,
     'grace_days_used': graceDaysUsed,
     'grace_days_available': graceDaysAvailable,
     if (lastGraceResetDate != null) 'last_grace_reset_date': DateFormat('yyyy-MM-dd').format(lastGraceResetDate!),
-    
-    if (streakStartDate != null) 'streak_start_date': DateFormat('yyyy-MM-dd').format(streakStartDate!),
+
     if (lastCompletedDate != null) 'last_completed_date': DateFormat('yyyy-MM-dd').format(lastCompletedDate!),
     if (lastCheckedDate != null) 'last_checked_date': DateFormat('yyyy-MM-dd').format(lastCheckedDate!),
     if (lastAttemptedDate != null) 'last_attempted_date': DateFormat('yyyy-MM-dd').format(lastAttemptedDate!),
-    'total_steps': totalSteps,
-    'total_calories_burned': totalCaloriesBurned,
-    'total_workouts': totalWorkouts,
-    'average_sleep': averageSleep,
-    'perfect_weeks': perfectWeeks,
-    'perfect_months': perfectMonths,
   };
 
   factory UserStreak.fromJson(Map<String, dynamic> json) {
@@ -393,24 +369,16 @@ class UserStreak {
       userId: json['user_id'],
       currentStreak: json['current_streak'] ?? 0,
       longestStreak: json['longest_streak'] ?? 0,
-      totalDaysCompleted: json['total_days_completed'] ?? 0,
-      
+
       // Grace Period fields
       consecutiveMissedDays: json['consecutive_missed_days'] ?? 0,
       graceDaysUsed: json['grace_days_used'] ?? 0,
       graceDaysAvailable: json['grace_days_available'] ?? 2,
       lastGraceResetDate: json['last_grace_reset_date'] != null ? DateTime.parse(json['last_grace_reset_date']) : null,
-      
-      streakStartDate: json['streak_start_date'] != null ? DateTime.parse(json['streak_start_date']) : null,
+
       lastCompletedDate: json['last_completed_date'] != null ? DateTime.parse(json['last_completed_date']) : null,
       lastCheckedDate: json['last_checked_date'] != null ? DateTime.parse(json['last_checked_date']) : null,
       lastAttemptedDate: json['last_attempted_date'] != null ? DateTime.parse(json['last_attempted_date']) : null,
-      totalSteps: json['total_steps'] ?? 0,
-      totalCaloriesBurned: json['total_calories_burned'] ?? 0,
-      totalWorkouts: json['total_workouts'] ?? 0,
-      averageSleep: (json['average_sleep'] ?? 0).toDouble(),
-      perfectWeeks: json['perfect_weeks'] ?? 0,
-      perfectMonths: json['perfect_months'] ?? 0,
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
     );

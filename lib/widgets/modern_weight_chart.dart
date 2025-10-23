@@ -573,10 +573,14 @@ class _ModernWeightChartState extends State<ModernWeightChart> {
       trendSpots.add(FlSpot(x, sum / count));
     }
 
-    // Calculate min and max for Y axis
+    // Calculate min and max for Y axis with better formatting
     final allWeights = filteredEntries.map((e) => e.weight).toList();
-    final minWeight = allWeights.reduce((a, b) => a < b ? a : b) - 2;
-    final maxWeight = allWeights.reduce((a, b) => a > b ? a : b) + 2;
+    final rawMin = allWeights.reduce((a, b) => a < b ? a : b);
+    final rawMax = allWeights.reduce((a, b) => a > b ? a : b);
+
+    // Round to nearest 0.5 for cleaner numbers
+    final minWeight = (rawMin - 2).floorToDouble();
+    final maxWeight = (rawMax + 2).ceilToDouble();
 
     return Container(
       height: widget.isCompact ? 150 : 200,
@@ -606,13 +610,18 @@ class _ModernWeightChartState extends State<ModernWeightChart> {
                 reservedSize: 40,
                 interval: (maxWeight - minWeight) / 4,
                 getTitlesWidget: (value, meta) {
-                  return Text(
-                    value.toStringAsFixed(1),
-                    style: TextStyle(
-                      color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
-                      fontSize: 12,
-                    ),
-                  );
+                  // Show cleaner number formatting - only show whole numbers
+                  if (value == value.roundToDouble()) {
+                    return Text(
+                      value.toInt().toString(),
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
                 },
               ),
             ),
@@ -686,20 +695,21 @@ class _ModernWeightChartState extends State<ModernWeightChart> {
             // Actual weight line
             LineChartBarData(
               spots: actualSpots,
-              isCurved: false,
+              isCurved: true,
+              curveSmoothness: 0.35,
               gradient: LinearGradient(
                 colors: [
                   AppTheme.primaryAccent.withOpacity(0.7),
                   AppTheme.primaryAccent,
                 ],
               ),
-              barWidth: 2,
+              barWidth: 3,
               isStrokeCapRound: true,
               dotData: FlDotData(
                 show: true,
                 getDotPainter: (spot, percent, barData, index) {
                   return FlDotCirclePainter(
-                    radius: touchedIndex == index ? 5 : 3,
+                    radius: touchedIndex == index ? 6 : 4,
                     color: AppTheme.primaryAccent,
                     strokeWidth: 0,
                   );

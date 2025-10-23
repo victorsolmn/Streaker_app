@@ -1,5 +1,43 @@
 import 'package:intl/intl.dart';
 
+class WeightMilestone {
+  final String id;
+  final double weight;
+  final String title;
+  final String description;
+  final DateTime achievedAt;
+  final String type; // 'loss', 'gain', 'target'
+
+  WeightMilestone({
+    required this.id,
+    required this.weight,
+    required this.title,
+    required this.description,
+    required this.achievedAt,
+    required this.type,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'weight': weight,
+    'title': title,
+    'description': description,
+    'achievedAt': achievedAt.toIso8601String(),
+    'type': type,
+  };
+
+  factory WeightMilestone.fromJson(Map<String, dynamic> json) {
+    return WeightMilestone(
+      id: json['id'],
+      weight: json['weight'].toDouble(),
+      title: json['title'],
+      description: json['description'],
+      achievedAt: DateTime.parse(json['achievedAt']),
+      type: json['type'],
+    );
+  }
+}
+
 class WeightEntry {
   final String id;
   final String? userId;
@@ -43,6 +81,8 @@ class WeightProgress {
   final double targetWeight;
   final List<WeightEntry> entries;
   final String unit;
+  final List<WeightMilestone> milestones;
+  final int daysTracking;
 
   WeightProgress({
     required this.startWeight,
@@ -50,6 +90,8 @@ class WeightProgress {
     required this.targetWeight,
     required this.entries,
     this.unit = 'kg',
+    this.milestones = const [],
+    this.daysTracking = 0,
   });
 
   double get totalLoss => startWeight - currentWeight;
@@ -57,6 +99,15 @@ class WeightProgress {
   double get progress => targetLoss > 0 ? (totalLoss / targetLoss).clamp(0.0, 1.0) : 0.0;
   double get progressPercentage => progress * 100;
   double get remainingLoss => currentWeight - targetWeight;
+
+  // Calculate days tracking from first entry to now
+  int get actualDaysTracking {
+    if (entries.isEmpty) return daysTracking;
+    final sortedEntries = List<WeightEntry>.from(entries)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final firstEntry = sortedEntries.first;
+    return DateTime.now().difference(firstEntry.timestamp).inDays;
+  }
   
   bool get isGoalAchieved => currentWeight <= targetWeight;
   
@@ -78,6 +129,8 @@ class WeightProgress {
     'targetWeight': targetWeight,
     'entries': entries.map((e) => e.toJson()).toList(),
     'unit': unit,
+    'milestones': milestones.map((m) => m.toJson()).toList(),
+    'daysTracking': daysTracking,
   };
 
   factory WeightProgress.fromJson(Map<String, dynamic> json) {
@@ -89,6 +142,10 @@ class WeightProgress {
           .map((e) => WeightEntry.fromJson(e))
           .toList(),
       unit: json['unit'] ?? 'kg',
+      milestones: json['milestones'] != null
+          ? (json['milestones'] as List).map((m) => WeightMilestone.fromJson(m)).toList()
+          : [],
+      daysTracking: json['daysTracking'] ?? 0,
     );
   }
 
@@ -98,6 +155,8 @@ class WeightProgress {
     double? targetWeight,
     List<WeightEntry>? entries,
     String? unit,
+    List<WeightMilestone>? milestones,
+    int? daysTracking,
   }) {
     return WeightProgress(
       startWeight: startWeight ?? this.startWeight,
@@ -105,6 +164,8 @@ class WeightProgress {
       targetWeight: targetWeight ?? this.targetWeight,
       entries: entries ?? this.entries,
       unit: unit ?? this.unit,
+      milestones: milestones ?? this.milestones,
+      daysTracking: daysTracking ?? this.daysTracking,
     );
   }
 }

@@ -123,9 +123,8 @@ class _DatabaseTestScreenState extends State<DatabaseTestScreen> {
         protein: 31.0,
         carbs: 0.0,
         fat: 3.6,
-        fiber: 0.0,
+        // Note: fiber and foodSource parameters removed - fields don't exist in database
         mealType: 'lunch',
-        foodSource: 'crud_test',
       );
       _log('✅ Nutrition entry added');
 
@@ -145,35 +144,8 @@ class _DatabaseTestScreenState extends State<DatabaseTestScreen> {
       );
       _log('✅ Daily nutrition summary: ${nutritionSummary['total_calories']} calories');
 
-      // Test health metrics operations
-      _log('5️⃣ Testing health metrics operations...');
-
-      // Add health metrics
-      await _supabaseService.saveHealthMetrics(
-        userId: userId,
-        steps: 8500,
-        heartRate: 72,
-        sleepHours: 7.5,
-        caloriesBurned: 2200,
-        distance: 6.5,
-        activeMinutes: 45,
-        waterIntake: 2500,
-      );
-      _log('✅ Health metrics saved');
-
-      // Read health metrics
-      final healthMetrics = await _supabaseService.getHealthMetrics(userId: userId);
-      if (healthMetrics == null) {
-        throw Exception('Health metrics not found');
-      }
-      _log('✅ Health metrics retrieved: ${healthMetrics['steps']} steps');
-
-      // Get health metrics history
-      final healthHistory = await _supabaseService.getHealthMetricsHistory(
-        userId: userId,
-        days: 7,
-      );
-      _log('✅ Health metrics history: ${healthHistory.length} records');
+      // Note: Health metrics tests removed - health tracking has been removed from app
+      _log('5️⃣ Health metrics tests skipped (feature removed)');
 
       // Test streak operations
       _log('6️⃣ Testing streak operations...');
@@ -233,7 +205,7 @@ class _DatabaseTestScreenState extends State<DatabaseTestScreen> {
       _log('  • User creation: ✅');
       _log('  • Profile CRUD: ✅');
       _log('  • Nutrition CRUD: ✅');
-      _log('  • Health metrics CRUD: ✅');
+      _log('  • Health metrics CRUD: ⏭️  (skipped - feature removed)');
       _log('  • Streaks CRUD: ✅');
       _log('  • Goals CRUD: ✅');
       _log('  • Dashboard query: ✅');
@@ -332,18 +304,8 @@ class _DatabaseTestScreenState extends State<DatabaseTestScreen> {
     try {
       _log('🧪 Starting schema fix validation');
 
-      // Test 1: Heart rate constraint validation
-      _log('1️⃣ Testing heart rate constraints...');
-      try {
-        final testUserId = 'test-heart-${DateTime.now().millisecondsSinceEpoch}';
-        await _supabaseService.saveHealthMetrics(
-          userId: testUserId,
-          heartRate: 25, // Should be handled gracefully now
-        );
-        _log('✅ Heart rate constraint handling working');
-      } catch (e) {
-        _log('❌ Heart rate constraint test failed: $e');
-      }
+      // Test 1: Heart rate constraint validation - SKIPPED (health tracking removed)
+      _log('1️⃣ Heart rate tests skipped (feature removed)');
 
       // Test 2: Profile with daily_calories_target
       _log('2️⃣ Testing daily_calories_target field...');

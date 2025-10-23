@@ -29,11 +29,11 @@ class DashboardMetricCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Theme.of(context).shadowColor.withOpacity(0.05),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -49,10 +49,10 @@ class DashboardMetricCard extends StatelessWidget {
                 Flexible(
                   child: Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF2D3142),
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -87,10 +87,10 @@ class DashboardMetricCard extends StatelessWidget {
                         fit: BoxFit.scaleDown,
                         child: Text(
                           value,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF2D3142),
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
                           ),
                         ),
                       ),
@@ -146,10 +146,10 @@ class CircularProgressChart extends StatelessWidget {
             children: [
               Text(
                 displayValue,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF2D3142),
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
                 ),
               ),
               Text(
@@ -280,10 +280,10 @@ class SemiCircularProgressChart extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 displayValue,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF2D3142),
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
                 ),
               ),
               Text(

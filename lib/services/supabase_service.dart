@@ -194,10 +194,9 @@ class SupabaseService {
     required double protein,
     required double carbs,
     required double fat,
-    double fiber = 0.0,
+    // Note: fiber and foodSource parameters REMOVED - fields don't exist in database after cleanup
     int quantityGrams = 100,
     String mealType = 'snack',
-    String? foodSource,
     DateTime? timestamp,
   }) async {
     try {
@@ -218,6 +217,9 @@ class SupabaseService {
         return;
       }
 
+      // Extract date from timestamp for the date column
+      final dateStr = '${entryTimestamp.year}-${entryTimestamp.month.toString().padLeft(2, '0')}-${entryTimestamp.day.toString().padLeft(2, '0')}';
+
       await _supabase.from('nutrition_entries').insert({
         'user_id': userId,
         'food_name': foodName,
@@ -225,13 +227,14 @@ class SupabaseService {
         'protein': protein,
         'carbs': carbs,
         'fat': fat,
-        'fiber': fiber,
+        // Note: fiber and food_source fields removed during database cleanup
         'quantity_grams': quantityGrams,
         'meal_type': mealType,
-        'food_source': foodSource,
+        'date': dateStr, // Required field for nutrition_entries
         'created_at': entryTimestamp.toIso8601String(),
+        'updated_at': entryTimestamp.toIso8601String(),
       });
-      debugPrint('Nutrition entry saved: $foodName ($quantityGrams grams)');
+      debugPrint('✅ Nutrition entry saved to database: $foodName ($quantityGrams grams) on $dateStr');
     } catch (e) {
       debugPrint('Error saving nutrition entry: $e');
       throw e;
@@ -558,55 +561,7 @@ class SupabaseService {
   }
 
 
-  // Health Metrics Methods
-  Future<void> saveHealthMetrics({
-    required String userId,
-    required String date,
-    required Map<String, dynamic> metrics,
-  }) async {
-    try {
-      // Only include heart_rate if it's valid (> 0)
-      final data = {
-        'user_id': userId,
-        'date': date,
-        'steps': metrics['steps'] ?? 0,
-      };
-
-      // Add optional fields only if they have valid values
-      if (metrics['heart_rate'] != null && metrics['heart_rate'] > 0) {
-        data['heart_rate'] = metrics['heart_rate'];
-      }
-      if (metrics['sleep_hours'] != null && metrics['sleep_hours'] > 0) {
-        data['sleep_hours'] = metrics['sleep_hours'];
-      }
-      if (metrics['calories_burned'] != null && metrics['calories_burned'] > 0) {
-        data['calories_burned'] = metrics['calories_burned'];
-      }
-
-      await _supabase.from('health_metrics').upsert(data, onConflict: 'user_id,date');
-    } catch (e) {
-      throw Exception('Failed to save health metrics: $e');
-    }
-  }
-
-  Future<Map<String, dynamic>?> getHealthMetrics({
-    required String userId,
-    required String date,
-  }) async {
-    try {
-      final response = await _supabase
-          .from('health_metrics')
-          .select()
-          .eq('user_id', userId)
-          .eq('date', date)
-          .maybeSingle();
-      
-      return response;
-    } catch (e) {
-      print('Error fetching health metrics: $e');
-      return null;
-    }
-  }
+  // Note: Health metrics methods removed - app now focuses on nutrition tracking only
 
   // Streak Methods
   Future<void> updateStreak({
@@ -660,19 +615,12 @@ class SupabaseService {
         .order('date', ascending: false);
   }
 
-  Stream<List<Map<String, dynamic>>> subscribeToHealthMetrics(String userId) {
-    return _supabase
-        .from('health_metrics')
-        .stream(primaryKey: ['id'])
-        .eq('user_id', userId)
-        .order('date', ascending: false);
-  }
+  // Note: subscribeToHealthMetrics removed - health tracking removed from app
 
   // Batch operations
   Future<void> syncOfflineData({
     required String userId,
     required List<Map<String, dynamic>> nutritionEntries,
-    required List<Map<String, dynamic>> healthMetrics,
   }) async {
     try {
       // Batch insert nutrition entries
@@ -685,17 +633,7 @@ class SupabaseService {
           onConflict: 'user_id,date',
         );
       }
-
-      // Batch insert health metrics
-      if (healthMetrics.isNotEmpty) {
-        await _supabase.from('health_metrics').upsert(
-          healthMetrics.map((metric) => {
-            'user_id': userId,
-            ...metric,
-          }).toList(),
-          onConflict: 'user_id,date',
-        );
-      }
+      // Note: Health metrics batch sync removed - app now focuses on nutrition tracking only
     } catch (e) {
       throw Exception('Failed to sync offline data: $e');
     }

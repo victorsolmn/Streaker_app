@@ -4,7 +4,6 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import '../../providers/supabase_user_provider.dart';
 import '../../providers/nutrition_provider.dart';
-import '../../providers/health_provider.dart';
 import '../../services/grok_service.dart';
 import '../../services/chat_session_service.dart';
 import '../../services/user_context_builder.dart';

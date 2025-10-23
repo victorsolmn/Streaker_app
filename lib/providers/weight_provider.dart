@@ -10,6 +10,8 @@ class WeightProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   List<WeightEntry> _entries = [];
+  List<WeightMilestone> _milestones = [];
+  String? _aiInsight;
 
   // Cache management
   DateTime? _lastFetchTime;
@@ -20,6 +22,8 @@ class WeightProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   List<WeightEntry> get entries => _entries;
+  List<WeightMilestone> get milestones => _milestones;
+  String? get aiInsight => _aiInsight;
 
   bool get hasData => _weightProgress != null;
 
@@ -91,12 +95,13 @@ class WeightProvider extends ChangeNotifier {
             .toList();
       }
 
-      // Load user profile for current weight and targets
-      // Only select columns that exist in the database
+      // Load user profile for current weight
+      // Note: target_weight was removed from profiles during database cleanup
+      // Weight goals are now stored in weight_entries table
       final profileResponse = await _supabase
           .from('profiles')
-          .select('weight, target_weight')
-          .eq('id', userId)  // Changed from 'user_id' to 'id' to match your table structure
+          .select('weight, weight_unit')
+          .eq('id', userId)
           .single();
 
       if (profileResponse != null) {
@@ -110,16 +115,12 @@ class WeightProvider extends ChangeNotifier {
           }
         }
 
-        double targetWeight = 0.0;
-        if (profileResponse['target_weight'] != null) {
-          if (profileResponse['target_weight'] is String) {
-            targetWeight = double.tryParse(profileResponse['target_weight']) ?? 0.0;
-          } else {
-            targetWeight = profileResponse['target_weight'].toDouble();
-          }
-        }
-        // Default to kg since weight_unit column doesn't exist yet
-        final unit = 'kg';
+        // Set default target weight (can be updated by user via settings)
+        // Since target_weight was removed from profiles, we'll use a default
+        double targetWeight = currentWeight > 0 ? currentWeight - 5 : 0.0;
+
+        // Get weight unit from profile (defaults to 'kg' if not set)
+        final unit = profileResponse['weight_unit'] as String? ?? 'kg';
 
         // If no entries but we have current weight, create a synthetic entry for display
         if (_entries.isEmpty && currentWeight > 0) {
@@ -200,11 +201,15 @@ class WeightProvider extends ChangeNotifier {
         final newEntry = WeightEntry.fromJson(response);
         _entries.insert(0, newEntry);
 
+        // Check for new milestones
+        _checkMilestones(weight);
+
         // Update weight progress
         if (_weightProgress != null) {
           _weightProgress = _weightProgress!.copyWith(
             currentWeight: weight,
             entries: _entries,
+            milestones: _milestones,
           );
         }
 
@@ -216,6 +221,9 @@ class WeightProvider extends ChangeNotifier {
               'updated_at': DateTime.now().toIso8601String(),
             })
             .eq('id', userId);
+
+        // Generate AI insights
+        await generateAIInsights();
 
         notifyListeners();
         return true;
@@ -301,15 +309,14 @@ class WeightProvider extends ChangeNotifier {
         return false;
       }
 
-      // Skip updating weight_unit since column doesn't exist
-      // Just update locally
-      // await _supabase
-      //     .from('profiles')
-      //     .update({
-      //       'weight_unit': unit,
-      //       'updated_at': DateTime.now().toIso8601String(),
-      //     })
-      //     .eq('user_id', userId);
+      // Update weight_unit in profiles table
+      await _supabase
+          .from('profiles')
+          .update({
+            'weight_unit': unit,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', userId);
 
       if (_weightProgress != null) {
         _weightProgress = _weightProgress!.copyWith(unit: unit);
@@ -326,6 +333,8 @@ class WeightProvider extends ChangeNotifier {
   }
 
   /// Update target weight
+  /// Note: target_weight is no longer stored in profiles table
+  /// This is now stored locally in the weight progress object
   Future<bool> updateTargetWeight(double targetWeight) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -341,14 +350,7 @@ class WeightProvider extends ChangeNotifier {
         return false;
       }
 
-      await _supabase
-          .from('profiles')
-          .update({
-            'target_weight': targetWeight,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', userId);
-
+      // Update locally only since target_weight was removed from profiles table
       if (_weightProgress != null) {
         _weightProgress = _weightProgress!.copyWith(targetWeight: targetWeight);
       }
@@ -402,10 +404,91 @@ class WeightProvider extends ChangeNotifier {
     return DateTime.now().add(Duration(days: (weeksNeeded * 7).round()));
   }
 
+  /// Calculate and check for new milestones
+  void _checkMilestones(double newWeight) {
+    if (_weightProgress == null) return;
+
+    final startWeight = _weightProgress!.startWeight;
+    final totalLoss = (startWeight - newWeight).abs();
+
+    // Define milestone thresholds (in kg)
+    final milestoneThresholds = [5.0, 10.0, 15.0, 20.0, 25.0, 30.0];
+
+    for (final threshold in milestoneThresholds) {
+      // Check if we've crossed this milestone
+      if (totalLoss >= threshold) {
+        // Check if milestone already exists
+        final milestoneId = 'loss_$threshold';
+        if (!_milestones.any((m) => m.id == milestoneId)) {
+          final milestone = WeightMilestone(
+            id: milestoneId,
+            weight: newWeight,
+            title: '$threshold${_weightProgress!.unit} Lost!',
+            description: 'You\'ve lost $threshold${_weightProgress!.unit}. Keep up the amazing work!',
+            achievedAt: DateTime.now(),
+            type: 'loss',
+          );
+          _milestones.add(milestone);
+        }
+      }
+    }
+
+    // Check if goal achieved
+    if (newWeight <= _weightProgress!.targetWeight) {
+      const milestoneId = 'goal_achieved';
+      if (!_milestones.any((m) => m.id == milestoneId)) {
+        final milestone = WeightMilestone(
+          id: milestoneId,
+          weight: newWeight,
+          title: 'Goal Achieved!',
+          description: 'Congratulations! You\'ve reached your target weight!',
+          achievedAt: DateTime.now(),
+          type: 'target',
+        );
+        _milestones.add(milestone);
+      }
+    }
+  }
+
+  /// Generate AI insights based on weight progress
+  Future<void> generateAIInsights() async {
+    if (_weightProgress == null || _entries.length < 3) {
+      _aiInsight = null;
+      return;
+    }
+
+    try {
+      // Prepare data for AI
+      final totalLoss = _weightProgress!.totalLoss.abs();
+      final trend = weeklyTrend;
+      final daysTracking = _weightProgress!.actualDaysTracking;
+      final progressPercentage = _weightProgress!.progressPercentage;
+
+      // Simple rule-based insights (can be enhanced with actual AI API later)
+      if (progressPercentage >= 75) {
+        _aiInsight = "Outstanding progress! You're ${progressPercentage.toStringAsFixed(0)}% towards your goal. Keep maintaining your current routine!";
+      } else if (trend != null && trend < -0.5) {
+        _aiInsight = "Great momentum! You're losing weight at a healthy pace of ${trend.abs().toStringAsFixed(1)}kg/week. This is sustainable and safe.";
+      } else if (trend != null && trend > 0.5) {
+        _aiInsight = "Your weight has been trending up recently. Review your nutrition and activity levels. Small adjustments can get you back on track!";
+      } else if (daysTracking >= 30 && totalLoss > 0) {
+        _aiInsight = "Consistency is key! You've been tracking for $daysTracking days and lost ${totalLoss.toStringAsFixed(1)}kg. Stay focused!";
+      } else {
+        _aiInsight = "Keep logging your weight consistently. The more data you track, the better insights we can provide!";
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error generating AI insights: $e');
+    }
+  }
+
   /// Clear all data
   void clear() {
     _weightProgress = null;
     _entries.clear();
+    _milestones.clear();
+    _aiInsight = null;
     _error = null;
     _lastFetchTime = null;
     notifyListeners();

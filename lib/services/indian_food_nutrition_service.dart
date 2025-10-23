@@ -684,7 +684,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
   "total_protein": number (in grams),
   "total_carbs": number (in grams),
   "total_fat": number (in grams),
-  "total_fiber": number (in grams)
 }
 ''';
 
@@ -730,7 +729,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
         'protein': (nutritionData['total_protein'] ?? 0).round(),
         'carbs': (nutritionData['total_carbs'] ?? 0).round(),
         'fat': (nutritionData['total_fat'] ?? 0).round(),
-        'fiber': (nutritionData['total_fiber'] ?? 0).round(),
       },
     };
   }
@@ -908,7 +906,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
     double totalProtein = 0;
     double totalCarbs = 0;
     double totalFat = 0;
-    double totalFiber = 0;
 
     for (final food in foods) {
       final nutrition = _indianFoodDatabase[food]!;
@@ -918,7 +915,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
       totalProtein += (nutrition['protein'] as double) * quantity;
       totalCarbs += (nutrition['carbs'] as double) * quantity;
       totalFat += (nutrition['fat'] as double) * quantity;
-      totalFiber += (nutrition['fiber'] as double) * quantity;
     }
 
     return {
@@ -929,7 +925,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
         'protein': totalProtein.round(),
         'carbs': totalCarbs.round(),
         'fat': totalFat.round(),
-        'fiber': totalFiber.round(),
       },
     };
   }
@@ -959,7 +954,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
     final protein = (baseCalories * 0.20 / 4).round();
     final carbs = (baseCalories * 0.50 / 4).round();
     final fat = (baseCalories * 0.30 / 9).round();
-    final fiber = (baseCalories * 0.02).round();
 
     return {
       'success': true,
@@ -969,7 +963,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
         'protein': protein,
         'carbs': carbs,
         'fat': fat,
-        'fiber': fiber,
       },
     };
   }
@@ -1008,7 +1001,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
           'protein': (nutrition['protein'] as double).round(),
           'carbs': (nutrition['carbs'] as double).round(),
           'fat': (nutrition['fat'] as double).round(),
-          'fiber': (nutrition['fiber'] as double).round(),
         },
         'source': 'Local Database',
       };
@@ -1041,7 +1033,6 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
           'protein': (nutrition['protein'] as double).round(),
           'carbs': (nutrition['carbs'] as double).round(),
           'fat': (nutrition['fat'] as double).round(),
-          'fiber': (nutrition['fiber'] as double).round(),
         },
         'source': 'Local Database (Partial Match)',
       };

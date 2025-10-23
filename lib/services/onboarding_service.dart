@@ -1,7 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/profile_model.dart';
 import '../models/supabase_enums.dart';
-import 'native_health_connect_service.dart';
 
 /// Onboarding Service - Handles all Supabase interactions for onboarding
 ///
@@ -9,7 +8,6 @@ import 'native_health_connect_service.dart';
 /// and saved to Supabase according to the database schema constraints
 class OnboardingService {
   final SupabaseClient _client;
-  final NativeHealthConnectService _healthService = NativeHealthConnectService();
 
   OnboardingService() : _client = Supabase.instance.client;
 
@@ -39,21 +37,7 @@ class OnboardingService {
         print('✅ OnboardingService: Profile found for user ${user.id}');
         final profile = ProfileModel.fromJson(response);
 
-        // Sync profile to native side if it has the required data
-        if (profile.age != null && profile.gender != null &&
-            profile.height != null && profile.weight != null) {
-          try {
-            await _healthService.syncUserProfile(
-              age: profile.age!,
-              gender: profile.gender!,
-              height: profile.height!,
-              weight: profile.weight!,
-            );
-            print('✅ OnboardingService: Existing profile synced to native side');
-          } catch (e) {
-            print('⚠️ OnboardingService: Failed to sync existing profile to native: $e');
-          }
-        }
+        // Note: Native health service sync removed (health tracking removed from app)
 
         return profile;
       }
@@ -90,7 +74,7 @@ class OnboardingService {
     required int age,
     required double height,
     required double weight,
-    double? targetWeight,
+    double? targetWeight,  // No longer saved to database (removed field)
   }) async {
     try {
       final user = currentUser;
@@ -100,16 +84,10 @@ class OnboardingService {
       }
 
       // Validate constraints
-      if (!_validateAge(age) || !_validateHeight(height) ||
-          !_validateWeight(weight) || (targetWeight != null && !_validateWeight(targetWeight))) {
+      if (!_validateAge(age) || !_validateHeight(height) || !_validateWeight(weight)) {
         print('❌ OnboardingService: Step 1 validation failed');
         return false;
       }
-
-      // Calculate BMI
-      final heightInMeters = height / 100;
-      final bmi = weight / (heightInMeters * heightInMeters);
-      final bmiCategory = _getBMICategory(bmi);
 
       print('📊 OnboardingService: Saving Step 1 data for user ${user.id}');
 
@@ -119,9 +97,6 @@ class OnboardingService {
         'age': age,
         'height': height,
         'weight': weight,
-        'target_weight': targetWeight ?? weight,
-        'bmi_value': bmi,
-        'bmi_category_value': bmiCategory,
         'updated_at': DateTime.now().toIso8601String(),
       };
 
@@ -132,20 +107,6 @@ class OnboardingService {
 
       print('✅ OnboardingService: Step 1 saved successfully');
 
-      // Sync profile to native side for calorie calculations
-      try {
-        await _healthService.syncUserProfile(
-          age: age,
-          gender: gender,
-          height: height,
-          weight: weight,
-        );
-        print('✅ OnboardingService: Profile synced to native side');
-      } catch (e) {
-        print('⚠️ OnboardingService: Failed to sync profile to native: $e');
-        // Don't fail the onboarding if sync fails
-      }
-
       return true;
     } catch (e) {
       print('❌ OnboardingService: Error saving Step 1: $e');
@@ -154,6 +115,7 @@ class OnboardingService {
   }
 
   /// Save fitness goal (Step 2)
+  /// NOTE: fitness_goal field removed from database - this is a no-op for compatibility
   Future<bool> saveOnboardingStep2({
     required String fitnessGoal,
   }) async {
@@ -164,31 +126,18 @@ class OnboardingService {
         return false;
       }
 
-      // Validate fitness goal
-      if (!SupabaseEnums.fitnessGoals.contains(fitnessGoal)) {
-        print('❌ OnboardingService: Invalid fitness goal: $fitnessGoal');
-        return false;
-      }
-
-      print('🎯 OnboardingService: Saving Step 2 data for user ${user.id}');
-
-      await _client
-          .from('profiles')
-          .update({
-            'fitness_goal': fitnessGoal,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', user.id);
-
-      print('✅ OnboardingService: Step 2 saved successfully');
+      print('🎯 OnboardingService: Step 2 (fitness goal) - field removed, skipping save');
+      // fitness_goal field was removed from profiles table
+      // Keeping method for compatibility with onboarding screen
       return true;
     } catch (e) {
-      print('❌ OnboardingService: Error saving Step 2: $e');
+      print('❌ OnboardingService: Error in Step 2: $e');
       return false;
     }
   }
 
   /// Save activity and experience (Step 3)
+  /// NOTE: activity_level, experience_level, workout_consistency fields removed - this is a no-op for compatibility
   Future<bool> saveOnboardingStep3({
     required String activityLevel,
     required String experienceLevel,
@@ -201,32 +150,12 @@ class OnboardingService {
         return false;
       }
 
-      // Validate inputs
-      if (!SupabaseEnums.activityLevels.contains(activityLevel)) {
-        print('❌ OnboardingService: Invalid activity level: $activityLevel');
-        return false;
-      }
-      if (!SupabaseEnums.experienceLevels.contains(experienceLevel)) {
-        print('❌ OnboardingService: Invalid experience level: $experienceLevel');
-        return false;
-      }
-
-      print('💪 OnboardingService: Saving Step 3 data for user ${user.id}');
-
-      await _client
-          .from('profiles')
-          .update({
-            'activity_level': activityLevel,
-            'experience_level': experienceLevel,
-            'workout_consistency': workoutConsistency,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', user.id);
-
-      print('✅ OnboardingService: Step 3 saved successfully');
+      print('💪 OnboardingService: Step 3 (activity/experience) - fields removed, skipping save');
+      // activity_level, experience_level, workout_consistency fields were removed from profiles table
+      // Keeping method for compatibility with onboarding screen
       return true;
     } catch (e) {
-      print('❌ OnboardingService: Error saving Step 3: $e');
+      print('❌ OnboardingService: Error in Step 3: $e');
       return false;
     }
   }
@@ -255,26 +184,34 @@ class OnboardingService {
         return false;
       }
 
-      // Calculate daily targets
-      final targets = _calculateDailyTargets(profile);
-
       print('🎉 OnboardingService: Completing onboarding for user ${user.id}');
+
+      // Set default nutrition goals if not already set
+      final Map<String, dynamic> updateData = {
+        'has_completed_onboarding': true,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // Add default nutrition goals if not set
+      if (profile.calorieGoal == null) {
+        updateData['calorie_goal'] = 2000;
+      }
+      if (profile.proteinGoal == null) {
+        updateData['protein_goal'] = 150;
+      }
+      if (profile.carbGoal == null) {
+        updateData['carb_goal'] = 250;
+      }
+      if (profile.fatGoal == null) {
+        updateData['fat_goal'] = 67;
+      }
 
       await _client
           .from('profiles')
-          .update({
-            'daily_calories_target': targets['totalCalories'],
-            'daily_active_calories_target': targets['activeCalories'],
-            'daily_steps_target': targets['steps'],
-            'daily_sleep_target': targets['sleep'],
-            'daily_water_target': targets['water'],
-            'has_completed_onboarding': true,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
+          .update(updateData)
           .eq('id', user.id);
 
       print('✅ OnboardingService: Onboarding completed successfully!');
-      print('📊 Saved targets: $targets');
       return true;
     } catch (e) {
       print('❌ OnboardingService: Error completing onboarding: $e');
@@ -283,16 +220,17 @@ class OnboardingService {
   }
 
   /// Save complete onboarding data at once
+  /// NOTE: Simplified version - removed fields no longer saved to database
   Future<bool> saveCompleteOnboardingData({
     required String name,
     required int age,
     required double height,
     required double weight,
-    double? targetWeight,
-    required String fitnessGoal,
-    required String activityLevel,
-    required String experienceLevel,
-    required String workoutConsistency,
+    double? targetWeight,  // No longer saved (field removed)
+    required String fitnessGoal,  // No longer saved (field removed)
+    required String activityLevel,  // No longer saved (field removed)
+    required String experienceLevel,  // No longer saved (field removed)
+    required String workoutConsistency,  // No longer saved (field removed)
   }) async {
     try {
       final user = currentUser;
@@ -303,64 +241,21 @@ class OnboardingService {
 
       print('📝 OnboardingService: Saving complete onboarding data for user ${user.id}');
 
-      // Validate all inputs
-      if (!_validateAllInputs(
-        age: age,
-        height: height,
-        weight: weight,
-        targetWeight: targetWeight,
-        fitnessGoal: fitnessGoal,
-        activityLevel: activityLevel,
-        experienceLevel: experienceLevel,
-      )) {
+      // Validate basic inputs only
+      if (!_validateAge(age) || !_validateHeight(height) || !_validateWeight(weight)) {
         return false;
       }
-
-      // Calculate BMI
-      final heightInMeters = height / 100;
-      final bmi = weight / (heightInMeters * heightInMeters);
-      final bmiCategory = _getBMICategory(bmi);
-
-      // Calculate daily targets
-      final bmr = _calculateBMR(age, height, weight);
-      final tdee = (bmr * SupabaseEnums.getActivityMultiplier(activityLevel)).round();
-
-      // Calculate active calories (TDEE - BMR)
-      var activeCaloriesBase = (tdee - bmr).round();
-
-      // Apply goal adjustments
-      switch (fitnessGoal) {
-        case 'Lose Weight':
-          activeCaloriesBase -= 200; // Reduce active calorie target
-          break;
-        case 'Gain Muscle':
-          activeCaloriesBase += 150; // Increase active calorie target
-          break;
-      }
-
-      final activeCaloriesTarget = activeCaloriesBase.clamp(500, 4000);
-      final totalCaloriesTarget = (bmr + activeCaloriesTarget).round().clamp(
-        SupabaseEnums.dailyCaloriesMin,
-        SupabaseEnums.dailyCaloriesMax,
-      );
 
       final profileData = {
         'name': name,
         'age': age,
         'height': height,
         'weight': weight,
-        'target_weight': targetWeight ?? weight,
-        'fitness_goal': fitnessGoal,
-        'activity_level': activityLevel,
-        'experience_level': experienceLevel,
-        'workout_consistency': workoutConsistency,
-        'bmi_value': bmi,
-        'bmi_category_value': bmiCategory,
-        'daily_calories_target': totalCaloriesTarget,
-        'daily_active_calories_target': activeCaloriesTarget,
-        'daily_steps_target': _getStepsTarget(activityLevel),
-        'daily_sleep_target': 8.0,
-        'daily_water_target': 3.0,
+        // Set default nutrition goals
+        'calorie_goal': 2000,
+        'protein_goal': 150,
+        'carb_goal': 250,
+        'fat_goal': 67,
         'has_completed_onboarding': true,
         'updated_at': DateTime.now().toIso8601String(),
       };
@@ -371,11 +266,9 @@ class OnboardingService {
           .eq('id', user.id);
 
       print('✅ OnboardingService: Onboarding data saved successfully!');
-      print('📊 Profile data: ${profileData.toString()}');
       return true;
     } catch (e) {
       print('❌ OnboardingService: Error saving onboarding data: $e');
-      print('Error details: $e');
       return false;
     }
   }
@@ -458,37 +351,17 @@ class OnboardingService {
     }
   }
 
+  /// NOTE: This method is deprecated - activity-based calculations removed
+  /// Using fixed defaults for nutrition goals now
   Map<String, int> _calculateDailyTargets(ProfileModel profile) {
-    final bmr = _calculateBMR(
-      profile.age!,
-      profile.height!,
-      profile.weight!,
-    );
-
-    final tdee = (bmr * SupabaseEnums.getActivityMultiplier(profile.activityLevel!)).round();
-
-    // Calculate active calories (TDEE - BMR)
-    var activeCaloriesBase = (tdee - bmr).round();
-
-    // Apply goal adjustments
-    switch (profile.fitnessGoal!) {
-      case 'Lose Weight':
-        activeCaloriesBase -= 200; // Reduce active calorie target
-        break;
-      case 'Gain Muscle':
-        activeCaloriesBase += 150; // Increase active calorie target
-        break;
-    }
-
-    final activeCaloriesTarget = activeCaloriesBase.clamp(500, 4000);
-    final totalCaloriesTarget = (bmr + activeCaloriesTarget).round().clamp(SupabaseEnums.dailyCaloriesMin, SupabaseEnums.dailyCaloriesMax);
-
+    // Since activity_level and fitness_goal fields were removed,
+    // return default nutrition targets
     return {
-      'totalCalories': totalCaloriesTarget,
-      'activeCalories': activeCaloriesTarget,
-      'steps': _getStepsTarget(profile.activityLevel!),
-      'sleep': 8, // 8 hours default
-      'water': 3, // 3 liters default
+      'totalCalories': 2000,
+      'activeCalories': 0, // Removed
+      'steps': 0, // Removed
+      'sleep': 0, // Removed
+      'water': 0, // Removed
     };
   }
 }

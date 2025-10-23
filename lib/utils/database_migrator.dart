@@ -227,7 +227,6 @@ SELECT
     SUM(protein) as total_protein,
     SUM(carbs) as total_carbs,
     SUM(fat) as total_fat,
-    SUM(fiber) as total_fiber,
     COUNT(*) as entries_count,
     CURRENT_TIMESTAMP as calculated_at
 FROM nutrition_entries

@@ -189,7 +189,6 @@ class _NutritionScreenState extends State<NutritionScreen>
             _NutritionDetailRow(label: 'Protein', value: '${entry.protein.round()}', unit: 'g'),
             _NutritionDetailRow(label: 'Carbs', value: '${entry.carbs.round()}', unit: 'g'),
             _NutritionDetailRow(label: 'Fat', value: '${entry.fat.round()}', unit: 'g'),
-            _NutritionDetailRow(label: 'Fiber', value: '${entry.fiber.round()}', unit: 'g'),
           ],
         ),
         actions: [
@@ -863,7 +862,6 @@ class _NutritionScreenState extends State<NutritionScreen>
     final proteinController = TextEditingController();
     final carbsController = TextEditingController();
     final fatController = TextEditingController();
-    final fiberController = TextEditingController();
     final formKey = GlobalKey<FormState>();
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -994,19 +992,6 @@ class _NutritionScreenState extends State<NutritionScreen>
                             validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
                             textInputAction: TextInputAction.next,
                           ),
-                          SizedBox(height: 16),
-
-                          TextFormField(
-                            controller: fiberController,
-                            decoration: InputDecoration(
-                              labelText: 'Fiber (g) - Optional',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            textInputAction: TextInputAction.done,
-                          ),
                           SizedBox(height: 20), // Extra space at bottom for keyboard
                         ],
                       ),
@@ -1042,7 +1027,6 @@ class _NutritionScreenState extends State<NutritionScreen>
                               protein: double.parse(proteinController.text),
                               carbs: double.parse(carbsController.text),
                               fat: double.parse(fatController.text),
-                              fiber: fiberController.text.isNotEmpty ? double.parse(fiberController.text) : 0.0,
                               timestamp: DateTime.now(),
                             );
 

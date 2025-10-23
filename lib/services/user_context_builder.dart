@@ -2,20 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../providers/nutrition_provider.dart';
-import '../providers/health_provider.dart';
-import '../models/health_metric_model.dart';
 
 class UserContextBuilder {
   static Map<String, dynamic> buildComprehensiveContext(BuildContext buildContext) {
     final userProvider = Provider.of<UserProvider>(buildContext, listen: false);
     final nutritionProvider = Provider.of<NutritionProvider>(buildContext, listen: false);
-    final healthProvider = Provider.of<HealthProvider>(buildContext, listen: false);
     
     final profile = userProvider.profile;
     final streakData = userProvider.streakData;
     final todayNutrition = nutritionProvider.todayNutrition;
     final weeklyNutrition = <DailyNutrition>[]; // Weekly nutrition to be implemented
-    final healthMetrics = healthProvider.metrics;
     
     // Build comprehensive context
     final context = <String, dynamic>{};
@@ -82,38 +78,10 @@ class UserContextBuilder {
       context['weeklyAvgFat'] = (avgFat / days).round();
     }
     
-    // Health Metrics
-    if (healthMetrics.isNotEmpty) {
-      // Steps
-      if (healthMetrics.containsKey(MetricType.steps)) {
-        final stepsData = healthMetrics[MetricType.steps];
-        context['todaySteps'] = stepsData?.currentValue?.round() ?? 0;
-        context['avgSteps'] = stepsData?.currentValue?.round() ?? 0; // Using current as average for now
-        context['stepsGoal'] = 10000; // Default goal
-        context['stepsProgress'] = ((stepsData?.currentValue ?? 0) / 10000 * 100).round();
-      }
-      
-      // Heart Rate
-      if (healthMetrics.containsKey(MetricType.restingHeartRate)) {
-        final hrData = healthMetrics[MetricType.restingHeartRate];
-        context['restingHeartRate'] = hrData?.currentValue?.round() ?? 0;
-        context['avgHeartRate'] = hrData?.currentValue?.round() ?? 0; // Using current as average
-      }
-      
-      // Sleep
-      if (healthMetrics.containsKey(MetricType.sleep)) {
-        final sleepData = healthMetrics[MetricType.sleep];
-        context['lastNightSleep'] = (sleepData?.currentValue ?? 0).toStringAsFixed(1);
-        context['avgSleep'] = (sleepData?.currentValue ?? 0).toStringAsFixed(1);
-        context['sleepGoal'] = 8; // Default 8 hours
-      }
-      
-      // Calories Burned
-      if (healthMetrics.containsKey(MetricType.caloriesIntake)) {
-        final calorieData = healthMetrics[MetricType.caloriesIntake];
-        context['caloriesBurned'] = calorieData?.currentValue?.round() ?? 0;
-      }
-    }
+    // Health tracking has been removed from the app
+    // Only nutrition tracking remains
+    context['todaySteps'] = 0;
+    context['stepsGoal'] = 0;
     
     // Time-based Context
     final now = DateTime.now();

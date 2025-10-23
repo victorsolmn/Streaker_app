@@ -20,7 +20,7 @@ class NutritionEntry {
   final double protein;
   final double carbs;
   final double fat;
-  final double fiber;
+  // NOTE: fiber field REMOVED - database doesn't have this column
   final DateTime timestamp;
   final Map<String, dynamic>? metadata; // NEW: Metadata for source, confidence, etc.
 
@@ -32,7 +32,7 @@ class NutritionEntry {
     required this.protein,
     required this.carbs,
     required this.fat,
-    this.fiber = 0.0,
+    // NOTE: fiber parameter REMOVED
     required this.timestamp,
     this.metadata, // NEW: Optional metadata
   });
@@ -46,7 +46,7 @@ class NutritionEntry {
       'protein': protein,
       'carbs': carbs,
       'fat': fat,
-      'fiber': fiber,
+      // NOTE: fiber field REMOVED - database doesn't have this column
       'timestamp': timestamp.toIso8601String(),
       'metadata': metadata, // Include metadata in JSON
     };
@@ -61,7 +61,7 @@ class NutritionEntry {
       protein: json['protein'].toDouble(),
       carbs: json['carbs'].toDouble(),
       fat: json['fat'].toDouble(),
-      fiber: json['fiber']?.toDouble() ?? 0.0,
+      // NOTE: fiber field REMOVED - database doesn't have this column
       timestamp: DateTime.parse(json['timestamp']),
       metadata: json['metadata'] as Map<String, dynamic>?, // Parse metadata
     );
@@ -71,14 +71,14 @@ class NutritionEntry {
 class DailyNutrition {
   final DateTime date;
   final List<NutritionEntry> entries;
-  
+
   DailyNutrition({required this.date, required this.entries});
 
   int get totalCalories => entries.fold(0, (sum, entry) => sum + entry.calories);
   double get totalProtein => entries.fold(0, (sum, entry) => sum + entry.protein);
   double get totalCarbs => entries.fold(0, (sum, entry) => sum + entry.carbs);
   double get totalFat => entries.fold(0, (sum, entry) => sum + entry.fat);
-  double get totalFiber => entries.fold(0, (sum, entry) => sum + entry.fiber);
+  // NOTE: totalFiber REMOVED - database doesn't track fiber
 }
 
 class NutritionProvider with ChangeNotifier {
@@ -165,8 +165,56 @@ class NutritionProvider with ChangeNotifier {
              entry.timestamp.month == today.month &&
              entry.timestamp.day == today.day;
     }).toList();
-    
+
     return DailyNutrition(date: today, entries: todayEntries);
+  }
+
+  // Helper getter for today's entries
+  List<NutritionEntry> get todayEntries => todayNutrition.entries;
+
+  // Load today's nutrition data (loads ONLY today's entries for accurate home page display)
+  Future<void> loadTodayNutrition() async {
+    final userId = _supabaseService.currentUser?.id;
+    if (userId == null) {
+      await _loadNutritionData();
+      return;
+    }
+
+    _setLoading(true);
+    try {
+      // Load ONLY today's entries for home page accuracy
+      final todayEntries = await _supabaseService.getTodayNutritionEntries(userId: userId);
+
+      // Clear entries and load only today's data to prevent showing yesterday's data
+      _entries.clear();
+
+      for (final entry in todayEntries) {
+        final timestamp = DateTime.parse(entry['created_at'] ?? entry['date'] ?? DateTime.now().toIso8601String());
+        final foodName = entry['food_name'] ?? 'Unknown';
+
+        _entries.add(NutritionEntry(
+          id: entry['id'] ?? '${timestamp.millisecondsSinceEpoch}_$foodName',
+          foodName: foodName,
+          calories: entry['calories'] ?? 0,
+          protein: (entry['protein'] ?? 0).toDouble(),
+          carbs: (entry['carbs'] ?? 0).toDouble(),
+          fat: (entry['fat'] ?? 0).toDouble(),
+          timestamp: timestamp,
+        ));
+      }
+
+      debugPrint('✅ Loaded ${_entries.length} entries for TODAY ONLY (home page)');
+
+      // Save to local storage
+      await _saveNutritionData();
+
+      _setLoading(false);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading today\'s nutrition: $e');
+      await _loadNutritionData();
+      _setLoading(false);
+    }
   }
 
   void _setLoading(bool loading) {
@@ -249,7 +297,6 @@ class NutritionProvider with ChangeNotifier {
           protein: (entry['protein'] ?? 0).toDouble(),
           carbs: (entry['carbs'] ?? 0).toDouble(),
           fat: (entry['fat'] ?? 0).toDouble(),
-          fiber: (entry['fiber'] ?? 0).toDouble(),
           timestamp: timestamp,
         ));
       }
@@ -424,7 +471,7 @@ class NutritionProvider with ChangeNotifier {
               protein: entry.protein,
               carbs: entry.carbs,
               fat: entry.fat,
-              fiber: entry.fiber,
+              // Note: fiber parameter removed - field doesn't exist in database
               timestamp: entry.timestamp,
             );
             syncedEntryIds.add(entryKey);
@@ -522,7 +569,6 @@ class NutritionProvider with ChangeNotifier {
           protein: (nutrition['protein'] ?? 0).toDouble(),
           carbs: (nutrition['carbs'] ?? 0).toDouble(),
           fat: (nutrition['fat'] ?? 0).toDouble(),
-          fiber: (nutrition['fiber'] ?? 0).toDouble(),
           timestamp: DateTime.now(),
           metadata: metadata, // Include metadata
         );
@@ -587,7 +633,6 @@ class NutritionProvider with ChangeNotifier {
           protein: (nutrition['protein'] ?? 0).toDouble(),
           carbs: (nutrition['carbs'] ?? 0).toDouble(),
           fat: (nutrition['fat'] ?? 0).toDouble(),
-          fiber: (nutrition['fiber'] ?? 0).toDouble(),
           timestamp: DateTime.now(),
         );
 
@@ -621,7 +666,6 @@ class NutritionProvider with ChangeNotifier {
           protein: entry.protein,
           carbs: entry.carbs,
           fat: entry.fat,
-          fiber: entry.fiber,
           timestamp: entry.timestamp,
         );
       } else {
@@ -659,7 +703,6 @@ class NutritionProvider with ChangeNotifier {
           protein: (nutrition['protein'] ?? 0).toDouble(),
           carbs: (nutrition['carbs'] ?? 0).toDouble(),
           fat: (nutrition['fat'] ?? 0).toDouble(),
-          fiber: (nutrition['fiber'] ?? 0).toDouble(),
           timestamp: DateTime.now(),
         );
         
@@ -704,7 +747,6 @@ class NutritionProvider with ChangeNotifier {
           protein: (nutrition['protein'] ?? 0).toDouble(),
           carbs: (nutrition['carbs'] ?? 0).toDouble(),
           fat: (nutrition['fat'] ?? 0).toDouble(),
-          fiber: (nutrition['fiber'] ?? 0).toDouble(),
           timestamp: DateTime.now(),
         );
         
@@ -782,7 +824,6 @@ class NutritionProvider with ChangeNotifier {
             protein: (entry['protein'] ?? 0).toDouble(),
             carbs: (entry['carbs'] ?? 0).toDouble(),
             fat: (entry['fat'] ?? 0).toDouble(),
-            fiber: (entry['fiber'] ?? 0).toDouble(),
             timestamp: timestamp,
           ));
         }

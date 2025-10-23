@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'supabase_service.dart';
 import 'database_sync_service.dart';
 import '../providers/nutrition_provider.dart';
-import '../providers/health_provider.dart';
 import '../providers/user_provider.dart';
 
 /// Service to handle real-time syncing between local storage and Supabase
@@ -79,9 +78,9 @@ class RealtimeSyncService {
       // Sync local data to Supabase
       await Future.wait([
         _syncNutritionData(),
-        _syncHealthMetrics(),
         _syncUserProfile(),
         // REMOVED: _syncStreaks() - Database triggers handle streak updates automatically
+        // REMOVED: _syncHealthMetrics() - Health tracking removed from app
       ]);
 
       debugPrint('✅ Local data synced to Supabase');
@@ -133,21 +132,20 @@ class RealtimeSyncService {
               'protein': 0.0,
               'carbs': 0.0,
               'fat': 0.0,
-              'fiber': 0.0,
+              // NOTE: fiber field REMOVED - database doesn't have this column
               'water': 0,
             };
           }
-          
-          entriesByDate[date]!['calories'] = 
+
+          entriesByDate[date]!['calories'] =
               (entriesByDate[date]!['calories'] ?? 0) + (entry['calories'] ?? 0);
-          entriesByDate[date]!['protein'] = 
+          entriesByDate[date]!['protein'] =
               (entriesByDate[date]!['protein'] ?? 0.0) + (entry['protein'] ?? 0.0);
-          entriesByDate[date]!['carbs'] = 
+          entriesByDate[date]!['carbs'] =
               (entriesByDate[date]!['carbs'] ?? 0.0) + (entry['carbs'] ?? 0.0);
-          entriesByDate[date]!['fat'] = 
+          entriesByDate[date]!['fat'] =
               (entriesByDate[date]!['fat'] ?? 0.0) + (entry['fat'] ?? 0.0);
-          entriesByDate[date]!['fiber'] = 
-              (entriesByDate[date]!['fiber'] ?? 0.0) + (entry['fiber'] ?? 0.0);
+          // NOTE: fiber accumulation REMOVED - database doesn't have this column
         }
         
         // Sync each day's totals to Supabase - placeholder for now
@@ -163,39 +161,6 @@ class RealtimeSyncService {
     } catch (e) {
       debugPrint('Error syncing nutrition: $e');
       _addToOfflineQueue('nutrition', {'error': e.toString()});
-    }
-  }
-  
-  /// Sync health metrics
-  Future<void> _syncHealthMetrics() async {
-    try {
-      final userId = _supabase.currentUser?.id;
-      if (userId == null) return;
-      
-      final prefs = await SharedPreferences.getInstance();
-      
-      // Get today's health data
-      final today = DateTime.now().toIso8601String().split('T')[0];
-      final steps = prefs.getInt('today_steps') ?? 0;
-      final heartRate = prefs.getInt('today_heart_rate');
-      final sleepHours = prefs.getDouble('today_sleep');
-      final caloriesBurned = prefs.getInt('today_calories_burned');
-      
-      await _supabase.saveHealthMetrics(
-        userId: userId,
-        date: today,
-        metrics: {
-          'steps': steps,
-          'heart_rate': heartRate,
-          'sleep_hours': sleepHours,
-          'calories_burned': caloriesBurned,
-        },
-      );
-      
-      debugPrint('🏃 Synced health metrics: $steps steps');
-    } catch (e) {
-      debugPrint('Error syncing health metrics: $e');
-      _addToOfflineQueue('health', {'error': e.toString()});
     }
   }
   
@@ -267,12 +232,10 @@ class RealtimeSyncService {
           case 'nutrition':
             await _syncNutritionData();
             break;
-          case 'health':
-            await _syncHealthMetrics();
-            break;
           case 'profile':
             await _syncUserProfile();
             break;
+          // REMOVED: case 'health' - health tracking removed from app
           // REMOVED: case 'streaks' - no longer manually syncing streaks
           default:
             debugPrint('⚠️ Unknown offline operation type: ${operation['type']}');
@@ -308,10 +271,9 @@ class RealtimeSyncService {
         protein: entry.protein,
         carbs: entry.carbs,
         fat: entry.fat,
-        fiber: entry.fiber,
+        // Note: fiber and foodSource parameters removed - fields don't exist in database
         quantityGrams: 100, // Default value since not available in entry
-        mealType: 'meal', // Default value since not available in entry  
-        foodSource: 'manual', // Default value since source not available
+        mealType: 'meal', // Default value since not available in entry
       );
       
       debugPrint('✅ Synced nutrition entry: ${entry.foodName}');

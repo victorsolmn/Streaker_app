@@ -65,7 +65,6 @@ class NutritionAIService {
             protein: (data['totalNutrients']?['PROCNT']?['quantity'] ?? 0).toDouble(),
             carbs: (data['totalNutrients']?['CHOCDF']?['quantity'] ?? 0).toDouble(),
             fat: (data['totalNutrients']?['FAT']?['quantity'] ?? 0).toDouble(),
-            fiber: (data['totalNutrients']?['FIBTG']?['quantity'] ?? 0).toDouble(),
             timestamp: DateTime.now(),
           );
         }
@@ -209,7 +208,6 @@ class NutritionAIService {
             protein: (nutrients['PROCNT'] ?? 0.0).toDouble(),
             carbs: (nutrients['CHOCDF'] ?? 0.0).toDouble(),
             fat: (nutrients['FAT'] ?? 0.0).toDouble(),
-            fiber: (nutrients['FIBTG'] ?? 0.0).toDouble(),
             timestamp: DateTime.now(),
           );
         }
@@ -259,7 +257,6 @@ class NutritionAIService {
       protein: (nutrition['protein'] as num).toDouble(),
       carbs: (nutrition['carbs'] as num).toDouble(),
       fat: (nutrition['fat'] as num).toDouble(),
-      fiber: (nutrition['fiber'] as num).toDouble(),
       timestamp: DateTime.now(),
     );
   }
@@ -270,14 +267,12 @@ class NutritionAIService {
       'protein': 0.0,
       'carbs': 0.0,
       'fat': 0.0,
-      'fiber': 0.0,
     };
     
     final caloriePattern = RegExp(r'(\d+)\s*(cal|calories|kcal)', caseSensitive: false);
     final proteinPattern = RegExp(r'protein[:\s]*(\d+\.?\d*)\s*g', caseSensitive: false);
     final carbPattern = RegExp(r'carb(ohydrate)?s?[:\s]*(\d+\.?\d*)\s*g', caseSensitive: false);
     final fatPattern = RegExp(r'fat[:\s]*(\d+\.?\d*)\s*g', caseSensitive: false);
-    final fiberPattern = RegExp(r'fiber[:\s]*(\d+\.?\d*)\s*g', caseSensitive: false);
     
     final calorieMatch = caloriePattern.firstMatch(text);
     if (calorieMatch != null) {
@@ -300,10 +295,6 @@ class NutritionAIService {
       nutritionData['fat'] = double.parse(fatMatch.group(1)!);
     }
     
-    final fiberMatch = fiberPattern.firstMatch(text);
-    if (fiberMatch != null) {
-      nutritionData['fiber'] = double.parse(fiberMatch.group(1)!);
-    }
     
     return nutritionData;
   }

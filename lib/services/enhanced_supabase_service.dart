@@ -160,10 +160,9 @@ class EnhancedSupabaseService {
     required double protein,
     required double carbs,
     required double fat,
-    double fiber = 0.0,
+    // Note: fiber and foodSource parameters REMOVED - fields don't exist in database after cleanup
     int quantityGrams = 100,
     String mealType = 'snack',
-    String? foodSource,
     DateTime? date,
   }) async {
     try {
@@ -174,11 +173,12 @@ class EnhancedSupabaseService {
         'protein': protein,
         'carbs': carbs,
         'fat': fat,
-        'fiber': fiber,
+        // Note: fiber and food_source fields removed during database cleanup
         'quantity_grams': quantityGrams,
         'meal_type': mealType,
-        'food_source': foodSource,
         'date': (date ?? DateTime.now()).toIso8601String().split('T')[0],
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
       });
 
       debugPrint('✅ Nutrition entry added: $foodName');
@@ -233,7 +233,6 @@ class EnhancedSupabaseService {
         'total_protein': 0.0,
         'total_carbs': 0.0,
         'total_fat': 0.0,
-        'total_fiber': 0.0,
         'entries_count': 0,
       };
     } catch (e) {
@@ -243,118 +242,16 @@ class EnhancedSupabaseService {
         'total_protein': 0.0,
         'total_carbs': 0.0,
         'total_fat': 0.0,
-        'total_fiber': 0.0,
         'entries_count': 0,
       };
     }
   }
 
   // ========================================
-  // HEALTH METRICS METHODS
+  // HEALTH METRICS METHODS - REMOVED
   // ========================================
-
-  Future<void> saveHealthMetrics({
-    required String userId,
-    DateTime? date,
-    int? steps,
-    int? heartRate,
-    double? sleepHours,
-    int? caloriesBurned,
-    double? distance,
-    int? activeMinutes,
-    int? waterIntake,
-  }) async {
-    final data = <String, dynamic>{
-      'user_id': userId,
-      'date': (date ?? DateTime.now()).toIso8601String().split('T')[0],
-    };
-
-    if (steps != null) data['steps'] = steps;
-
-    // Validate heart rate before saving
-    if (heartRate != null) {
-      if (heartRate >= 30 && heartRate <= 250) {
-        data['heart_rate'] = heartRate;
-      } else {
-        debugPrint('⚠️ Invalid heart rate: $heartRate BPM. Skipping...');
-        // Don't include invalid heart rate data
-      }
-    }
-
-    if (sleepHours != null) data['sleep_hours'] = sleepHours;
-    if (caloriesBurned != null) data['calories_burned'] = caloriesBurned;
-    if (distance != null) data['distance'] = distance;
-    if (activeMinutes != null) data['active_minutes'] = activeMinutes;
-    if (waterIntake != null) data['water_intake'] = waterIntake;
-
-    try {
-      await _supabase.from('health_metrics').upsert(data);
-      debugPrint('✅ Health metrics saved for ${data['date']}');
-    } catch (e) {
-      debugPrint('❌ Error saving health metrics: $e');
-
-      // Add specific handling for constraint violations
-      if (e.toString().contains('heart_rate_check')) {
-        debugPrint('🔄 Retrying without heart rate data...');
-        // Retry without heart rate if constraint fails
-        final retryData = Map<String, dynamic>.from(data);
-        retryData.remove('heart_rate');
-        try {
-          await _supabase.from('health_metrics').upsert(retryData);
-          debugPrint('✅ Health metrics saved without heart rate');
-          return;
-        } catch (retryError) {
-          debugPrint('❌ Retry failed: $retryError');
-        }
-      }
-
-      rethrow;
-    }
-  }
-
-  Future<Map<String, dynamic>?> getHealthMetrics({
-    required String userId,
-    DateTime? date,
-  }) async {
-    try {
-      final targetDate = (date ?? DateTime.now()).toIso8601String().split('T')[0];
-
-      final response = await _supabase
-          .from('health_metrics')
-          .select()
-          .eq('user_id', userId)
-          .eq('date', targetDate)
-          .maybeSingle();
-
-      debugPrint('✅ Health metrics fetched for $targetDate');
-      return response;
-    } catch (e) {
-      debugPrint('❌ Error fetching health metrics: $e');
-      return null;
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getHealthMetricsHistory({
-    required String userId,
-    int days = 30,
-  }) async {
-    try {
-      final startDate = DateTime.now().subtract(Duration(days: days));
-
-      final response = await _supabase
-          .from('health_metrics')
-          .select()
-          .eq('user_id', userId)
-          .order('date', ascending: false)
-          .limit(days + 10); // Get a bit more to account for filtering
-
-      debugPrint('✅ Fetched ${response.length} health metrics records');
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
-      debugPrint('❌ Error fetching health metrics history: $e');
-      return [];
-    }
-  }
+  // Note: All health metrics methods have been removed as the app now focuses
+  // exclusively on nutrition tracking. Health device integration is no longer supported.
 
   // ========================================
   // STREAKS METHODS
@@ -609,30 +506,14 @@ class EnhancedSupabaseService {
                 protein: 5.0 + random.nextDouble() * 25,
                 carbs: 10.0 + random.nextDouble() * 40,
                 fat: 2.0 + random.nextDouble() * 15,
-                fiber: random.nextDouble() * 10,
+                // Note: fiber and foodSource parameters removed - fields don't exist in database
                 mealType: mealTypes[random.nextInt(mealTypes.length)],
-                foodSource: 'test_data',
                 date: date,
               );
             }
           }
 
-          // Add health metrics for the last 30 days
-          for (int day = 0; day < 30; day++) {
-            final date = DateTime.now().subtract(Duration(days: day));
-
-            await saveHealthMetrics(
-              userId: userId,
-              date: date,
-              steps: 3000 + random.nextInt(12000),
-              heartRate: 60 + random.nextInt(40),
-              sleepHours: 6.0 + random.nextDouble() * 4,
-              caloriesBurned: 1500 + random.nextInt(1000),
-              distance: 2.0 + random.nextDouble() * 10,
-              activeMinutes: 30 + random.nextInt(120),
-              waterIntake: 1500 + random.nextInt(1500),
-            );
-          }
+          // Note: Health metrics generation removed - app now focuses on nutrition tracking only
 
           // Update streaks
           await updateStreak(

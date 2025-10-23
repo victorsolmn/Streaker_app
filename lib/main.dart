@@ -12,7 +12,6 @@ import 'services/realtime_sync_service.dart';
 import 'services/daily_reset_service.dart';
 import 'services/permission_flow_manager.dart';
 import 'services/database_sync_service.dart';
-import 'services/background_sync_service.dart';
 import 'services/secure_storage_service.dart';
 import 'config/api_config.dart';
 // Using Supabase providers for cloud storage
@@ -23,7 +22,6 @@ import 'providers/supabase_user_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/nutrition_provider.dart';
 import 'providers/user_provider.dart';
-import 'providers/health_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/streak_provider.dart';
 import 'providers/achievement_provider.dart';
@@ -48,8 +46,7 @@ void main() async {
   // Initialize Daily Reset Service
   await DailyResetService().initialize();
 
-  // Initialize Background Sync Service (WorkManager)
-  await BackgroundSyncService.initialize();
+  // Note: Background Sync Service removed (workmanager package removed)
 
   // Initialize API keys securely from api_config.dart (gitignored file)
   try {
@@ -108,7 +105,6 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider(prefs)),
         ChangeNotifierProvider(create: (_) => UserProvider(prefs)),
         ChangeNotifierProvider(create: (_) => NutritionProvider(prefs)),
-        ChangeNotifierProvider(create: (_) => HealthProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider(prefs)),
         ChangeNotifierProvider(create: (_) => StreakProvider()),
         ChangeNotifierProvider(create: (_) => AchievementProvider()),

@@ -5,7 +5,6 @@ import '../models/streak_model.dart';
 import '../services/supabase_service.dart';
 import '../services/database_sync_service.dart';
 import '../utils/streak_logger.dart';
-import 'health_provider.dart';
 import 'nutrition_provider.dart';
 import 'user_provider.dart';
 
@@ -96,7 +95,7 @@ class StreakProvider extends ChangeNotifier {
     }
   }
   
-  // Load today's metrics
+  // Load today's metrics (nutrition-based)
   Future<void> loadTodayMetrics() async {
     try {
       final userId = _supabaseService.currentUser?.id;
@@ -106,28 +105,47 @@ class StreakProvider extends ChangeNotifier {
       final today = DateTime.now().toLocal();
       final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
-      final response = await _supabaseService.client
-          .from('health_metrics')
-          .select()
-          .eq('user_id', userId)
-          .eq('date', dateStr)
+      // Get user's calorie target from profile
+      final profileResponse = await _supabaseService.client
+          .from('profiles')
+          .select('daily_calories_target')
+          .eq('id', userId)
           .maybeSingle();
-      
-      if (response != null) {
-        _todayMetrics = UserDailyMetrics.fromJson(response);
-      } else {
-        // Create today's metrics with default values
-        _todayMetrics = UserDailyMetrics(
-          userId: userId,
-          date: today,
-          stepsGoal: await _getGoalValue('steps') ?? 10000,
-          caloriesGoal: await _getGoalValue('calories') ?? 2000,
-          sleepGoal: await _getGoalValue('sleep') ?? 8.0,
-          waterGoal: await _getGoalValue('water') ?? 8,
-          proteinGoal: await _getGoalValue('protein') ?? 50,
-        );
+
+      final caloriesGoal = profileResponse?['daily_calories_target'] ?? 2000;
+
+      // Get today's nutrition entries
+      final nutritionResponse = await _supabaseService.client
+          .from('nutrition_entries')
+          .select('calories')
+          .eq('user_id', userId)
+          .eq('date', dateStr);
+
+      // Calculate total calories consumed
+      int totalCalories = 0;
+      if (nutritionResponse != null && (nutritionResponse as List).isNotEmpty) {
+        totalCalories = (nutritionResponse as List)
+            .fold<int>(0, (sum, entry) => sum + ((entry['calories'] as num?)?.toInt() ?? 0));
       }
-      
+
+      // Calculate if goal is achieved (80% - 110% of target)
+      final minCalories = (caloriesGoal * 0.8).toInt();
+      final maxCalories = (caloriesGoal * 1.1).toInt();
+      final goalAchieved = totalCalories >= minCalories && totalCalories <= maxCalories;
+
+      // Create today's metrics
+      _todayMetrics = UserDailyMetrics(
+        userId: userId,
+        date: today,
+        caloriesConsumed: totalCalories,
+        caloriesGoal: caloriesGoal,
+      );
+
+      // Update goal achievement status
+      _todayMetrics = _todayMetrics!.copyWith(
+        nutritionAchieved: goalAchieved,
+      );
+
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading today metrics: $e');
@@ -135,22 +153,60 @@ class StreakProvider extends ChangeNotifier {
     }
   }
   
-  // Load recent metrics for history
+  // Load recent metrics for history (nutrition-based)
   Future<void> loadRecentMetrics() async {
     try {
       final userId = _supabaseService.currentUser?.id;
       if (userId == null) return;
 
-      final response = await _supabaseService.client
-          .from('health_metrics')
-          .select()
-          .eq('user_id', userId)
-          .order('date', ascending: false)
-          .limit(30);
+      // Get user's calorie target
+      final profileResponse = await _supabaseService.client
+          .from('profiles')
+          .select('daily_calories_target')
+          .eq('id', userId)
+          .maybeSingle();
 
-      _recentMetrics = (response as List)
-          .map((json) => UserDailyMetrics.fromJson(json))
-          .toList();
+      final caloriesGoal = profileResponse?['daily_calories_target'] ?? 2000;
+
+      // Get nutrition entries from last 30 days
+      final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+      final dateStr = '${thirtyDaysAgo.year}-${thirtyDaysAgo.month.toString().padLeft(2, '0')}-${thirtyDaysAgo.day.toString().padLeft(2, '0')}';
+
+      final response = await _supabaseService.client
+          .from('nutrition_entries')
+          .select('date, calories')
+          .eq('user_id', userId)
+          .gte('date', dateStr)
+          .order('date', ascending: false);
+
+      // Group by date and calculate daily totals
+      final Map<String, int> dailyCalories = {};
+      if (response != null && (response as List).isNotEmpty) {
+        for (var entry in response as List) {
+          final date = entry['date'] as String;
+          final calories = (entry['calories'] as num?)?.toInt() ?? 0;
+          dailyCalories[date] = (dailyCalories[date] ?? 0) + calories;
+        }
+      }
+
+      // Create metrics for each day
+      _recentMetrics = dailyCalories.entries.map((entry) {
+        final date = DateTime.parse(entry.key);
+        final totalCalories = entry.value;
+        final minCalories = (caloriesGoal * 0.8).toInt();
+        final maxCalories = (caloriesGoal * 1.1).toInt();
+        final goalAchieved = totalCalories >= minCalories && totalCalories <= maxCalories;
+
+        return UserDailyMetrics(
+          userId: userId,
+          date: date,
+          caloriesConsumed: totalCalories,
+          caloriesGoal: caloriesGoal,
+        ).copyWith(nutritionAchieved: goalAchieved);
+      }).toList();
+
+      // Sort by date descending
+      _recentMetrics.sort((a, b) => b.date.compareTo(a.date));
 
       // Calculate current month's completed days
       _calculateMonthlyStats();
@@ -161,28 +217,11 @@ class StreakProvider extends ChangeNotifier {
     }
   }
   
-  // Update metrics from health and nutrition providers
+  // Update metrics from nutrition provider only
   Future<void> syncMetricsFromProviders(
-    HealthProvider healthProvider,
     NutritionProvider nutritionProvider,
     UserProvider userProvider,
   ) async {
-    // Check if sync is too soon
-    if (_lastSyncTime != null &&
-        DateTime.now().difference(_lastSyncTime!) < _syncCooldown) {
-      StreakLogger.logSyncSkipped(DateTime.now().difference(_lastSyncTime!));
-      return;
-    }
-
-    // Check if already syncing
-    if (_isSyncing) {
-      StreakLogger.logSyncInProgress();
-      return;
-    }
-
-    _isSyncing = true;
-    final stopwatch = Stopwatch()..start();
-
     try {
       final userId = _supabaseService.currentUser?.id;
       if (userId == null) return;
@@ -190,116 +229,42 @@ class StreakProvider extends ChangeNotifier {
       final profile = userProvider.profile;
       if (profile == null) return;
 
-      // Get current metrics or create new
-      final today = DateTime.now();
-      final metrics = _todayMetrics ?? UserDailyMetrics(
+      // Get calorie target
+      final caloriesGoal = profile.dailyCaloriesTarget ?? 2000;
+
+      // Get today's total calories from nutrition provider
+      final totalCalories = nutritionProvider.todayNutrition.totalCalories;
+
+      // Calculate if goal is achieved (80% - 110% of target)
+      final minCalories = (caloriesGoal * 0.8).toInt();
+      final maxCalories = (caloriesGoal * 1.1).toInt();
+      final goalAchieved = totalCalories >= minCalories && totalCalories <= maxCalories;
+
+      // Update today's metrics
+      _todayMetrics = UserDailyMetrics(
         userId: userId,
-        date: today,
-      );
+        date: DateTime.now(),
+        caloriesConsumed: totalCalories,
+        caloriesGoal: caloriesGoal,
+      ).copyWith(nutritionAchieved: goalAchieved);
 
-      // Update with health data
-      final updatedMetrics = metrics.copyWith(
-        steps: healthProvider.todaySteps.toInt(),
-        caloriesBurned: healthProvider.todayCaloriesBurned.toInt(),
-        heartRate: healthProvider.todayHeartRate.toInt(),
-        sleepHours: healthProvider.todaySleep,
-        distance: healthProvider.todayDistance,
-        waterGlasses: healthProvider.todayWater,
-        workouts: healthProvider.todayWorkouts,
+      notifyListeners();
 
-        // Update with nutrition data from today's entries
-        caloriesConsumed: nutritionProvider.todayNutrition.totalCalories,
-        protein: nutritionProvider.todayNutrition.totalProtein,
-        carbs: nutritionProvider.todayNutrition.totalCarbs,
-        fat: nutritionProvider.todayNutrition.totalFat,
-        fiber: nutritionProvider.todayNutrition.totalFiber,
-
-        // Update with user goals
-        stepsGoal: profile.dailyStepsTarget ?? 10000,
-        caloriesGoal: profile.dailyCaloriesTarget ?? 2000,
-        sleepGoal: profile.dailySleepTarget ?? 8.0,
-        waterGoal: profile.dailyWaterTarget?.toInt() ?? 8,
-        proteinGoal: nutritionProvider.proteinGoal.toDouble(),
-
-        // Update weight if available
-        weight: profile.weight,
-      );
-
-      // Calculate achievements
-      final finalMetrics = updatedMetrics.calculateAchievements();
-
-      // Save to Supabase
-      await saveMetrics(finalMetrics);
-
-      // Let database handle streak calculation
-      final dbSync = DatabaseSyncService();
-      final result = await dbSync.syncToday();
-
-      if (result != null) {
-        if (result['streak'] != null) {
-          final previousStreak = _userStreak?.currentStreak ?? 0;
-          _userStreak = UserStreak.fromJson(result['streak']);
-
-          if (previousStreak != _userStreak!.currentStreak) {
-            StreakLogger.logUpdated(
-              previousStreak: previousStreak,
-              newStreak: _userStreak!.currentStreak,
-              reason: 'goals achievement check',
-            );
-          }
-        }
-
-        if (result['health_metrics'] != null) {
-          _todayMetrics = UserDailyMetrics.fromJson(result['health_metrics']);
-        }
+      // Check and update streak if goal achieved
+      if (goalAchieved) {
+        await checkAndUpdateStreak();
       }
 
-      stopwatch.stop();
-      _lastSyncTime = DateTime.now();
-
-      StreakLogger.logSyncComplete(
-        currentStreak: currentStreak,
-        longestStreak: longestStreak,
-        syncTime: stopwatch.elapsed,
-      );
-
     } catch (e) {
-      StreakLogger.logUpdateFailed('Sync from providers failed', e);
+      debugPrint('Error syncing metrics: $e');
       _setError('Failed to sync metrics');
-    } finally {
-      _isSyncing = false;
     }
   }
   
-  // Save metrics to Supabase
-  Future<void> saveMetrics(UserDailyMetrics metrics) async {
-    try {
-      _setLoading(true);
-      
-      final data = metrics.toJson();
-      
-      final response = await _supabaseService.client
-          .from('health_metrics')
-          .upsert(
-            data,
-            onConflict: 'user_id,date',
-          )
-          .select()
-          .single();
-      
-      _todayMetrics = UserDailyMetrics.fromJson(response);
-      
-      // Save to local storage as well
-      await _saveToLocal(metrics);
-      
-      _setLoading(false);
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error saving metrics: $e');
-      _setError('Failed to save metrics');
-      _setLoading(false);
-    }
-  }
+  // Note: Metrics are no longer saved to a separate table.
+  // Nutrition data is stored in nutrition_entries table.
+  // Streak data is stored in streaks table.
+  // This method is removed as it's no longer needed.
   
   // Check and update streak
   Future<void> checkAndUpdateStreak() async {
@@ -311,44 +276,15 @@ class StreakProvider extends ChangeNotifier {
       final userId = _supabaseService.currentUser?.id;
       if (userId == null) return;
 
-      // Use database function to ensure proper calculation
-      final dbSync = DatabaseSyncService();
-      final result = await dbSync.syncToday();
+      // The database trigger will handle streak updates
+      // We just need to reload the streak data
+      await loadUserStreak();
 
-      if (result != null) {
-        // Update local data from database result
-        if (result['streak'] != null) {
-          final previousStreak = _userStreak?.currentStreak ?? 0;
-          _userStreak = UserStreak.fromJson(result['streak']);
-
-          StreakLogger.logUpdated(
-            previousStreak: previousStreak,
-            newStreak: _userStreak!.currentStreak,
-            reason: 'manual streak check',
-          );
-        }
-
-        if (result['health_metrics'] != null) {
-          _todayMetrics = UserDailyMetrics.fromJson(result['health_metrics']);
-        }
-
-        // Show achievement notification
-        _showStreakNotification();
-
-        notifyListeners();
-      } else {
-        // Fallback: reload from database
-        await loadUserStreak();
-      }
+      // Show achievement notification
+      _showStreakNotification();
 
     } catch (e) {
-      StreakLogger.logUpdateFailed('Manual streak check failed', e);
-      // Try fallback reload
-      try {
-        await loadUserStreak();
-      } catch (e2) {
-        StreakLogger.logUpdateFailed('Fallback reload failed', e2);
-      }
+      debugPrint('Error updating streak: $e');
     }
   }
   
@@ -375,35 +311,20 @@ class StreakProvider extends ChangeNotifier {
     }
   }
   
-  // Get goal value from user settings
-  Future<dynamic> _getGoalValue(String goalType) async {
-    try {
-      final userId = _supabaseService.currentUser?.id;
-      if (userId == null) return null;
-      
-      final response = await _supabaseService.client
-          .from('user_goals')
-          .select('daily_${goalType}_goal')
-          .eq('user_id', userId)
-          .maybeSingle();
-      
-      return response?['daily_${goalType}_goal'];
-    } catch (e) {
-      return null;
-    }
-  }
+  // Note: Goal values are now retrieved from profiles table only
   
-  // Save to local storage
+  // Save to local storage (nutrition data only)
   Future<void> _saveToLocal(UserDailyMetrics metrics) async {
     if (_prefs == null) return;
 
     final today = DateTime.now();
     final key = 'metrics_${today.year}_${today.month}_${today.day}';
 
-    await _prefs!.setInt('${key}_steps', metrics.steps);
+    // Only save nutrition-related metrics
     await _prefs!.setInt('${key}_calories', metrics.caloriesConsumed);
-    await _prefs!.setDouble('${key}_sleep', metrics.sleepHours);
-    await _prefs!.setInt('${key}_water', metrics.waterGlasses);
+    await _prefs!.setDouble('${key}_protein', metrics.protein);
+    await _prefs!.setDouble('${key}_carbs', metrics.carbs);
+    await _prefs!.setDouble('${key}_fat', metrics.fat);
     await _prefs!.setBool('${key}_achieved', metrics.allGoalsAchieved);
 
     // REMOVED: SharedPreferences streak writes - database is single source of truth
@@ -414,32 +335,27 @@ class StreakProvider extends ChangeNotifier {
   void _setupRealtimeSubscriptions() {
     final userId = _supabaseService.currentUser?.id;
     if (userId == null) return;
-    
-    // Subscribe to metrics changes
+
+    // Subscribe to nutrition entries changes
     _metricsSubscription = _supabaseService.client
-        .channel('user_metrics_changes')
+        .channel('user_nutrition_changes')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'health_metrics',
+          table: 'nutrition_entries',
           filter: PostgresChangeFilter(
             type: PostgresChangeFilterType.eq,
             column: 'user_id',
             value: userId,
           ),
           callback: (payload) {
-            debugPrint('Metrics updated: ${payload.newRecord}');
-            if (payload.newRecord != null) {
-              final metrics = UserDailyMetrics.fromJson(payload.newRecord!);
-              if (_isTodayMetrics(metrics)) {
-                _todayMetrics = metrics;
-                notifyListeners();
-              }
-            }
+            debugPrint('Nutrition entry updated: ${payload.newRecord}');
+            // Reload today's metrics when nutrition changes
+            loadTodayMetrics();
           },
         )
         .subscribe();
-    
+
     // Subscribe to streak changes
     _streakSubscription = _supabaseService.client
         .channel('user_streak_changes')
@@ -477,34 +393,15 @@ class StreakProvider extends ChangeNotifier {
     debugPrint('🔥 Streak updated: ${_userStreak?.currentStreak} days!');
   }
   
-  // Update single metric
-  Future<void> updateSingleMetric(String metricType, dynamic value) async {
-    if (_todayMetrics == null) return;
-    
-    UserDailyMetrics updated;
-    switch (metricType) {
-      case 'water':
-        updated = _todayMetrics!.copyWith(waterGlasses: value as int);
-        break;
-      case 'weight':
-        updated = _todayMetrics!.copyWith(weight: value as double);
-        break;
-      case 'workouts':
-        updated = _todayMetrics!.copyWith(workouts: value as int);
-        break;
-      default:
-        return;
-    }
-    
-    await saveMetrics(updated.calculateAchievements());
-  }
+  // Note: Single metric updates are no longer supported.
+  // All nutrition data is managed through nutrition_entries table.
+  // Weight updates go through weight_entries table.
   
   // Get streak statistics with grace period information
   Map<String, dynamic> getStreakStats() {
     return {
       'current': _userStreak?.currentStreak ?? 0,
       'longest': _userStreak?.longestStreak ?? 0,
-      'total': _userStreak?.totalDaysCompleted ?? 0,
       'isActive': _userStreak?.isStreakActive ?? false,
       'isInGracePeriod': _userStreak?.isInGracePeriod ?? false,
       'graceDaysUsed': _userStreak?.graceDaysUsed ?? 0,
@@ -549,12 +446,10 @@ class StreakProvider extends ChangeNotifier {
   
   int _getGoalsCompletedCount() {
     if (_todayMetrics == null) return 0;
+    // Only count nutrition-based goals now
     int count = 0;
-    if (_todayMetrics!.stepsAchieved) count++;
-    if (_todayMetrics!.caloriesAchieved) count++;
-    if (_todayMetrics!.sleepAchieved) count++;
-    if (_todayMetrics!.waterAchieved) count++;
     if (_todayMetrics!.nutritionAchieved) count++;
+    // Can add more nutrition-specific goals here (e.g., protein goal, fiber goal)
     return count;
   }
 
@@ -571,7 +466,7 @@ class StreakProvider extends ChangeNotifier {
     }).length;
   }
 
-  // Get detailed monthly statistics
+  // Get detailed monthly statistics (nutrition-based)
   Future<Map<String, dynamic>> getMonthlyStats({int? month, int? year}) async {
     try {
       final userId = _supabaseService.currentUser?.id;
@@ -581,35 +476,57 @@ class StreakProvider extends ChangeNotifier {
       final targetMonth = month ?? now.month;
       final targetYear = year ?? now.year;
 
-      // Query monthly stats using the database function
-      final response = await _supabaseService.client
-          .rpc('get_user_monthly_stats', params: {
-            'p_user_id': userId,
-            'p_month': targetMonth,
-            'p_year': targetYear,
-          });
+      // Get user's calorie target
+      final profileResponse = await _supabaseService.client
+          .from('profiles')
+          .select('daily_calories_target')
+          .eq('id', userId)
+          .maybeSingle();
 
+      final caloriesGoal = profileResponse?['daily_calories_target'] ?? 2000;
+
+      // Get nutrition entries for the target month
+      final startDate = DateTime(targetYear, targetMonth, 1);
+      final endDate = DateTime(targetYear, targetMonth + 1, 0); // Last day of month
+      final startDateStr = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+      final endDateStr = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+
+      final response = await _supabaseService.client
+          .from('nutrition_entries')
+          .select('date, calories')
+          .eq('user_id', userId)
+          .gte('date', startDateStr)
+          .lte('date', endDateStr);
+
+      // Group by date and calculate daily totals
+      final Map<String, int> dailyCalories = {};
+      int totalCalories = 0;
       if (response != null && (response as List).isNotEmpty) {
-        final stats = response[0];
-        return {
-          'month': stats['month'] ?? targetMonth,
-          'year': stats['year'] ?? targetYear,
-          'daysCompleted': stats['days_completed'] ?? 0,
-          'totalSteps': stats['total_steps'] ?? 0,
-          'avgCalories': stats['avg_calories'] ?? 0.0,
-          'avgSleep': stats['avg_sleep'] ?? 0.0,
-          'perfectDays': stats['perfect_days'] ?? 0,
-        };
+        for (var entry in response as List) {
+          final date = entry['date'] as String;
+          final calories = (entry['calories'] as num?)?.toInt() ?? 0;
+          dailyCalories[date] = (dailyCalories[date] ?? 0) + calories;
+          totalCalories += calories;
+        }
+      }
+
+      // Calculate perfect days (80%-110% of target)
+      final minCalories = (caloriesGoal * 0.8).toInt();
+      final maxCalories = (caloriesGoal * 1.1).toInt();
+      int perfectDays = 0;
+      for (var dayTotal in dailyCalories.values) {
+        if (dayTotal >= minCalories && dayTotal <= maxCalories) {
+          perfectDays++;
+        }
       }
 
       return {
         'month': targetMonth,
         'year': targetYear,
-        'daysCompleted': 0,
-        'totalSteps': 0,
-        'avgCalories': 0.0,
-        'avgSleep': 0.0,
-        'perfectDays': 0,
+        'daysCompleted': perfectDays,
+        'avgCalories': dailyCalories.isEmpty ? 0.0 : totalCalories / dailyCalories.length,
+        'perfectDays': perfectDays,
+        'totalDays': dailyCalories.length,
       };
     } catch (e) {
       debugPrint('Error getting monthly stats: $e');

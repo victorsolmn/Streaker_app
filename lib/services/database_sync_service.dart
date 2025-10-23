@@ -135,7 +135,7 @@ class DatabaseSyncService {
 
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
 
-      // Check if there are nutrition entries but health_metrics.calories_consumed is 0
+      // Check if there are nutrition entries for this date
       final nutritionEntries = await _supabase.client
           .from('nutrition_entries')
           .select('calories')
@@ -144,20 +144,11 @@ class DatabaseSyncService {
 
       if (nutritionEntries.isEmpty) return false;
 
-      final healthMetric = await _supabase.client
-          .from('health_metrics')
-          .select('calories_consumed')
-          .eq('user_id', userId)
-          .eq('date', dateStr)
-          .maybeSingle();
-
       final totalNutrition = (nutritionEntries as List)
           .fold<double>(0, (sum, entry) => sum + (entry['calories'] ?? 0));
 
-      final syncedCalories = healthMetric?['calories_consumed'] ?? 0;
-
-      // Needs sync if there's a mismatch
-      return totalNutrition > 0 && syncedCalories == 0;
+      // Needs sync if there are nutrition entries
+      return totalNutrition > 0;
     } catch (e) {
       debugPrint('⚠️ [DatabaseSync] Error checking sync status: $e');
       return false;

@@ -16,22 +16,14 @@ class ProfileModel {
   final String? gender; // Male, Female, Other, Prefer not to say
   final double? height; // 50-300 cm
   final double? weight; // 20-500 kg
-  final String? activityLevel;
   final String? photoUrl; // Profile photo URL from Supabase storage
-  final String? fitnessGoal;
-  final String? experienceLevel;
-  final double? targetWeight; // 20-500 kg
-  final String? workoutConsistency;
-  final int? dailyCaloriesTarget; // 500-10000 (total calories = BMR + active)
-  final int? dailyActiveCaloriesTarget; // 500-4000 (active calories only)
-  final int? dailyStepsTarget; // 0-100000
-  final double? dailySleepTarget; // 0-24 hours
-  final double? dailyWaterTarget; // 0-20 liters
-  final bool? hasSeenFitnessGoalSummary; // Default false
-  final String? deviceName;
-  final bool? deviceConnected; // Default false
-  final double? bmiValue;
-  final String? bmiCategoryValue;
+  final String? weightUnit; // kg or lbs
+
+  // Nutrition goals (added after cleanup)
+  final int? calorieGoal; // Default 2000
+  final double? proteinGoal; // Default 150
+  final double? carbGoal; // Default 250
+  final double? fatGoal; // Default 67
 
   ProfileModel({
     required this.id,
@@ -44,22 +36,12 @@ class ProfileModel {
     this.gender,
     this.height,
     this.weight,
-    this.activityLevel,
     this.photoUrl,
-    this.fitnessGoal,
-    this.experienceLevel,
-    this.targetWeight,
-    this.workoutConsistency,
-    this.dailyCaloriesTarget,
-    this.dailyActiveCaloriesTarget,
-    this.dailyStepsTarget,
-    this.dailySleepTarget,
-    this.dailyWaterTarget,
-    this.hasSeenFitnessGoalSummary,
-    this.deviceName,
-    this.deviceConnected,
-    this.bmiValue,
-    this.bmiCategoryValue,
+    this.weightUnit,
+    this.calorieGoal,
+    this.proteinGoal,
+    this.carbGoal,
+    this.fatGoal,
   });
 
   /// Create from Supabase JSON response
@@ -83,30 +65,18 @@ class ProfileModel {
       weight: json['weight'] != null
           ? (json['weight'] as num).toDouble()
           : null,
-      activityLevel: json['activity_level'] as String?,
       photoUrl: json['photo_url'] as String?,
-      fitnessGoal: json['fitness_goal'] as String?,
-      experienceLevel: json['experience_level'] as String?,
-      targetWeight: json['target_weight'] != null
-          ? (json['target_weight'] as num).toDouble()
+      weightUnit: json['weight_unit'] as String?,
+      calorieGoal: json['calorie_goal'] as int?,
+      proteinGoal: json['protein_goal'] != null
+          ? (json['protein_goal'] as num).toDouble()
           : null,
-      workoutConsistency: json['workout_consistency'] as String?,
-      dailyCaloriesTarget: json['daily_calories_target'] as int?,
-      dailyActiveCaloriesTarget: json['daily_active_calories_target'] as int?,
-      dailyStepsTarget: json['daily_steps_target'] as int?,
-      dailySleepTarget: json['daily_sleep_target'] != null
-          ? (json['daily_sleep_target'] as num).toDouble()
+      carbGoal: json['carb_goal'] != null
+          ? (json['carb_goal'] as num).toDouble()
           : null,
-      dailyWaterTarget: json['daily_water_target'] != null
-          ? (json['daily_water_target'] as num).toDouble()
+      fatGoal: json['fat_goal'] != null
+          ? (json['fat_goal'] as num).toDouble()
           : null,
-      hasSeenFitnessGoalSummary: json['has_seen_fitness_goal_summary'] as bool?,
-      deviceName: json['device_name'] as String?,
-      deviceConnected: json['device_connected'] as bool?,
-      bmiValue: json['bmi_value'] != null
-          ? (json['bmi_value'] as num).toDouble()
-          : null,
-      bmiCategoryValue: json['bmi_category_value'] as String?,
     );
   }
 
@@ -121,22 +91,12 @@ class ProfileModel {
       if (gender != null) 'gender': gender,
       if (height != null) 'height': height,
       if (weight != null) 'weight': weight,
-      if (activityLevel != null) 'activity_level': activityLevel,
       if (photoUrl != null) 'photo_url': photoUrl,
-      if (fitnessGoal != null) 'fitness_goal': fitnessGoal,
-      if (experienceLevel != null) 'experience_level': experienceLevel,
-      if (targetWeight != null) 'target_weight': targetWeight,
-      if (workoutConsistency != null) 'workout_consistency': workoutConsistency,
-      if (dailyCaloriesTarget != null) 'daily_calories_target': dailyCaloriesTarget,
-      if (dailyActiveCaloriesTarget != null) 'daily_active_calories_target': dailyActiveCaloriesTarget,
-      if (dailyStepsTarget != null) 'daily_steps_target': dailyStepsTarget,
-      if (dailySleepTarget != null) 'daily_sleep_target': dailySleepTarget,
-      if (dailyWaterTarget != null) 'daily_water_target': dailyWaterTarget,
-      if (hasSeenFitnessGoalSummary != null) 'has_seen_fitness_goal_summary': hasSeenFitnessGoalSummary,
-      if (deviceName != null) 'device_name': deviceName,
-      if (deviceConnected != null) 'device_connected': deviceConnected,
-      if (bmiValue != null) 'bmi_value': bmiValue,
-      if (bmiCategoryValue != null) 'bmi_category_value': bmiCategoryValue,
+      if (weightUnit != null) 'weight_unit': weightUnit,
+      if (calorieGoal != null) 'calorie_goal': calorieGoal,
+      if (proteinGoal != null) 'protein_goal': proteinGoal,
+      if (carbGoal != null) 'carb_goal': carbGoal,
+      if (fatGoal != null) 'fat_goal': fatGoal,
       'updated_at': DateTime.now().toIso8601String(),
     };
   }
@@ -153,22 +113,12 @@ class ProfileModel {
     String? gender,
     double? height,
     double? weight,
-    String? activityLevel,
     String? photoUrl,
-    String? fitnessGoal,
-    String? experienceLevel,
-    double? targetWeight,
-    String? workoutConsistency,
-    int? dailyCaloriesTarget,
-    int? dailyActiveCaloriesTarget,
-    int? dailyStepsTarget,
-    double? dailySleepTarget,
-    double? dailyWaterTarget,
-    bool? hasSeenFitnessGoalSummary,
-    String? deviceName,
-    bool? deviceConnected,
-    double? bmiValue,
-    String? bmiCategoryValue,
+    String? weightUnit,
+    int? calorieGoal,
+    double? proteinGoal,
+    double? carbGoal,
+    double? fatGoal,
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -181,22 +131,12 @@ class ProfileModel {
       gender: gender ?? this.gender,
       height: height ?? this.height,
       weight: weight ?? this.weight,
-      activityLevel: activityLevel ?? this.activityLevel,
       photoUrl: photoUrl ?? this.photoUrl,
-      fitnessGoal: fitnessGoal ?? this.fitnessGoal,
-      experienceLevel: experienceLevel ?? this.experienceLevel,
-      targetWeight: targetWeight ?? this.targetWeight,
-      workoutConsistency: workoutConsistency ?? this.workoutConsistency,
-      dailyCaloriesTarget: dailyCaloriesTarget ?? this.dailyCaloriesTarget,
-      dailyActiveCaloriesTarget: dailyActiveCaloriesTarget ?? this.dailyActiveCaloriesTarget,
-      dailyStepsTarget: dailyStepsTarget ?? this.dailyStepsTarget,
-      dailySleepTarget: dailySleepTarget ?? this.dailySleepTarget,
-      dailyWaterTarget: dailyWaterTarget ?? this.dailyWaterTarget,
-      hasSeenFitnessGoalSummary: hasSeenFitnessGoalSummary ?? this.hasSeenFitnessGoalSummary,
-      deviceName: deviceName ?? this.deviceName,
-      deviceConnected: deviceConnected ?? this.deviceConnected,
-      bmiValue: bmiValue ?? this.bmiValue,
-      bmiCategoryValue: bmiCategoryValue ?? this.bmiCategoryValue,
+      weightUnit: weightUnit ?? this.weightUnit,
+      calorieGoal: calorieGoal ?? this.calorieGoal,
+      proteinGoal: proteinGoal ?? this.proteinGoal,
+      carbGoal: carbGoal ?? this.carbGoal,
+      fatGoal: fatGoal ?? this.fatGoal,
     );
   }
 
@@ -212,7 +152,7 @@ class ProfileModel {
 
   /// Get BMI category based on BMI value
   String? getBMICategory() {
-    final bmi = bmiValue ?? calculateBMI();
+    final bmi = calculateBMI();
     if (bmi == null) return null;
 
     if (bmi < 18.5) return 'Underweight';
@@ -225,18 +165,16 @@ class ProfileModel {
   bool hasMinimumOnboardingData() {
     return age != null &&
            height != null &&
-           weight != null &&
-           activityLevel != null &&
-           fitnessGoal != null;
+           weight != null;
   }
 
-  /// Check if profile has complete onboarding data
+  /// Check if profile has complete onboarding data (including nutrition goals)
   bool hasCompleteOnboardingData() {
     return hasMinimumOnboardingData() &&
-           experienceLevel != null &&
-           workoutConsistency != null &&
-           dailyCaloriesTarget != null &&
-           dailyStepsTarget != null;
+           calorieGoal != null &&
+           proteinGoal != null &&
+           carbGoal != null &&
+           fatGoal != null;
   }
 
   /// Check if profile has required data for BMR calculation

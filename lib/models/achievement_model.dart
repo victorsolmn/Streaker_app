@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 enum AchievementType {
   streak,
-  workout,
   special,
 }
 
@@ -103,8 +102,6 @@ class Achievement {
     switch (type) {
       case 'streak':
         return AchievementType.streak;
-      case 'workout':
-        return AchievementType.workout;
       case 'special':
         return AchievementType.special;
       default:
