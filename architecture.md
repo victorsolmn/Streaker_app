@@ -47,10 +47,13 @@ lib/
 │   │   ├── otp_verification_screen.dart
 │   │   └── welcome_screen.dart
 │   ├── main/                    # Main app screens
-│   │   ├── home_screen_clean.dart     # Primary home screen
-│   │   ├── progress_screen_new.dart   # Progress tracking
+│   │   ├── home_screen_clean.dart     # Primary home screen (Nutrition)
+│   │   ├── progress_screen_new.dart   # Progress tracking (Weight)
 │   │   ├── profile_screen.dart        # User profile
-│   │   └── main_screen.dart          # Navigation container
+│   │   ├── main_screen.dart          # Navigation container (5 tabs)
+│   │   ├── chat_screen.dart          # AI Coach / Workouts
+│   │   ├── ecommerce_screen.dart     # Odoo shop integration (NEW v1.0.13)
+│   │   └── nutrition_home_screen.dart # Nutrition home
 │   └── legal/                   # Legal screens
 │       ├── privacy_policy_screen.dart
 │       └── terms_conditions_screen.dart
@@ -178,6 +181,49 @@ Supabase (profiles)
     → User Updates
     → Supabase (profiles)
 ```
+
+#### E-commerce Flow (Added October 29, 2025 - v1.0.13)
+```
+User Taps Shop Tab
+    → MainScreen (IndexedStack index 3)
+    → EcommerceScreen (WebView)
+    → Loads: https://streaker.odoo.com/?source=app
+    ↓
+WebView Features:
+    ├─ Back/Forward navigation
+    ├─ Page refresh
+    ├─ Progress indicators
+    ├─ Error handling & retry
+    ├─ Pull-to-refresh
+    └─ Dynamic page titles
+
+User Browses/Purchases
+    → Odoo backend processes order
+    → ?source=app parameter tracks app-driven sales
+    → Analytics available in Odoo admin panel
+```
+
+**Key Implementation Details:**
+- Uses `webview_flutter` package for in-app browsing
+- JavaScriptMode.unrestricted for full functionality
+- NavigationDelegate handles page lifecycle events
+- Error handling with user-friendly retry mechanism
+- Source tracking enables conversion analytics
+- Separate browsing context (secure, isolated)
+
+**Revenue Model:**
+- Direct product sales (30-40% profit margin)
+- In-app shopping eliminates app switching friction
+- Contextual shopping (users shop when motivated)
+- Conservative: ₹36K/month @ 10K MAU
+- Optimized: ₹98K/month with personalization
+
+**Future Enhancements:**
+1. Personalized landing pages based on fitness goals
+2. Post-workout shopping prompts
+3. Wishlist integration in Profile screen
+4. Streak-based reward discounts
+5. AI product recommendations
 
 ## Database Schema
 
