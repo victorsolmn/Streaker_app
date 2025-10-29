@@ -20,8 +20,8 @@ class WeightStatsSummary extends StatelessWidget {
         final unit = weightProgress?.unit ?? 'kg';
 
         return Container(
-          margin: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -45,7 +45,6 @@ class WeightStatsSummary extends StatelessWidget {
                 label: 'CURRENT',
                 unit: currentWeight > 0 ? unit : '',
               ),
-              SizedBox(width: 12),
               _buildStatCard(
                 icon: Icons.flag_outlined,
                 iconColor: ThemeConfig.accentColor,
@@ -55,7 +54,6 @@ class WeightStatsSummary extends StatelessWidget {
                 label: 'TARGET',
                 unit: targetWeight > 0 ? unit : '',
               ),
-              SizedBox(width: 12),
               _buildStatCard(
                 icon: Icons.calendar_today_outlined,
                 iconColor: Color(0xFF9B59B6), // Purple
@@ -63,7 +61,6 @@ class WeightStatsSummary extends StatelessWidget {
                 label: 'DAYS',
                 unit: '',
               ),
-              SizedBox(width: 12),
               _buildStatCard(
                 icon: weeklyTrend != null && weeklyTrend < 0
                     ? Icons.trending_down

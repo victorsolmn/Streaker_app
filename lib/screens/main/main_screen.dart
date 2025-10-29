@@ -11,6 +11,7 @@ import '../../services/popup_service.dart';
 import 'nutrition_home_screen.dart';
 import 'weight_home_screen.dart';
 import 'chat_screen.dart';
+import 'ecommerce_screen.dart';
 import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -93,10 +94,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   List<Widget> get _screens => [
-    const NutritionHomeScreen(),
+    NutritionHomeScreen(
+      onProfileTap: () {
+        setState(() {
+          _currentIndex = 4; // Switch to Profile tab
+        });
+      },
+    ),
     const WeightHomeScreen(),
     const ChatScreen(),
-    ProfileScreen(key: _profileKey),
+    const EcommerceScreen(
+      initialUrl: 'https://streaker.odoo.com/?source=app', // Streaker store with app tracking
+      title: 'Streaker Shop',
+    ),
+    const ProfileScreen(),
   ];
 
   final List<BottomNavigationBarItem> _bottomNavItems = [
@@ -644,6 +655,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: IndexedStack(
         index: _currentIndex,
         children: _screens,
@@ -679,7 +691,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               _buildNavBarItem(1, Icons.monitor_weight_outlined, 'Weight'),
               SizedBox(width: 56), // Space for FAB
               _buildNavBarItem(2, Icons.fitness_center_outlined, 'Workouts'),
-              _buildNavBarItem(3, Icons.person_outline_rounded, 'Profile'),
+              _buildNavBarItem(3, Icons.shopping_bag_outlined, 'Shop'),
             ],
           ),
         ),

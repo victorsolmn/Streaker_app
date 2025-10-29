@@ -5,9 +5,12 @@ import '../../providers/nutrition_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/streak_provider.dart';
 import '../../config/theme_config.dart';
+import 'profile_screen.dart';
 
 class NutritionHomeScreen extends StatefulWidget {
-  const NutritionHomeScreen({Key? key}) : super(key: key);
+  final VoidCallback? onProfileTap;
+
+  const NutritionHomeScreen({Key? key, this.onProfileTap}) : super(key: key);
 
   @override
   State<NutritionHomeScreen> createState() => _NutritionHomeScreenState();
@@ -50,10 +53,16 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor: ThemeConfig.primaryColor.withOpacity(0.15),
-                        child: Icon(Icons.person, color: ThemeConfig.primaryColor, size: 20),
+                      GestureDetector(
+                        onTap: widget.onProfileTap,
+                        child: Hero(
+                          tag: 'profile_avatar',
+                          child: CircleAvatar(
+                            radius: 20,
+                            backgroundColor: ThemeConfig.primaryColor.withOpacity(0.15),
+                            child: Icon(Icons.person, color: ThemeConfig.primaryColor, size: 20),
+                          ),
+                        ),
                       ),
                       Text(
                         'Home',

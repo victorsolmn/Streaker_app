@@ -92,6 +92,10 @@ class _SupabaseOnboardingScreenState extends State<SupabaseOnboardingScreen>
 
     // Try to get existing profile
     final profile = await _onboardingService.getOrCreateProfile();
+
+    // Check if widget is still mounted before updating controllers
+    if (!mounted) return;
+
     if (profile != null) {
       // Pre-fill with existing data if available
       _nameController.text = profile.name;

@@ -448,79 +448,6 @@ $recentContext
                         ),
                       ],
                     ),
-                    const SizedBox(height: 32),
-
-                    // Popular topics - Modern Grid Design
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.explore,
-                                size: 20,
-                                color: AppTheme.primaryAccent.withOpacity(0.8),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Explore Topics',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                                  letterSpacing: -0.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Modern 2x2 Grid Layout
-                        GridView.count(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 1.6,
-                          children: [
-                            _buildModernTopicTile(
-                              icon: Icons.fitness_center,
-                              title: 'Strength',
-                              subtitle: 'Build muscle',
-                              color: AppTheme.accentFlameRed,
-                              isDarkMode: isDarkMode,
-                              onTap: () => _sendMessage('Tell me about effective strength training techniques'),
-                            ),
-                            _buildModernTopicTile(
-                              icon: Icons.directions_run,
-                              title: 'Cardio',
-                              subtitle: 'Boost endurance',
-                              color: AppTheme.accentFlameOrange,
-                              isDarkMode: isDarkMode,
-                              onTap: () => _sendMessage('How can I improve my cardio endurance?'),
-                            ),
-                            _buildModernTopicTile(
-                              icon: Icons.restaurant_menu,
-                              title: 'Nutrition',
-                              subtitle: 'Fuel your body',
-                              color: AppTheme.accentEmber,
-                              isDarkMode: isDarkMode,
-                              onTap: () => _sendMessage('What nutrition tips do you have for my goals?'),
-                            ),
-                            _buildModernTopicTile(
-                              icon: Icons.bedtime,
-                              title: 'Recovery',
-                              subtitle: 'Rest & restore',
-                              color: AppTheme.accentFlameYellow,
-                              isDarkMode: isDarkMode,
-                              onTap: () => _sendMessage('How important is recovery and how can I optimize it?'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -1397,6 +1324,7 @@ $recentContext
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Main content

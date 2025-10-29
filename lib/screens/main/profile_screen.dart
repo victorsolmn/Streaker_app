@@ -110,14 +110,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       color: Theme.of(context).brightness == Brightness.dark ? AppTheme.darkCardBackground : Colors.white,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            'Profile',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
+          IconButton(
+            onPressed: () {
+              // Navigate back to home screen (index 0)
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => MainScreen(initialIndex: 0),
+                ),
+              );
+            },
+            icon: Icon(
+              Icons.arrow_back,
               color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              'Profile',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.bodyLarge?.color,
+              ),
             ),
           ),
           IconButton(
