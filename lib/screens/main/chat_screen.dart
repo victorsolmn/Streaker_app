@@ -32,6 +32,50 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Timer? _sessionTimer;
   List<String> _currentSuggestions = [];
 
+  // Quick workout prompts - 2-word labels with detailed prompts and unique icons
+  final List<Map<String, dynamic>> _quickWorkoutPrompts = [
+    {
+      'label': 'Quick Burn',
+      'prompt': 'Generate a 15-minute high-intensity workout I can do right now without any equipment',
+      'icon': Icons.local_fire_department, // Fire icon for Quick Burn
+    },
+    {
+      'label': 'Strength Focus',
+      'prompt': 'Create a comprehensive strength training workout targeting major muscle groups with proper form instructions',
+      'icon': Icons.fitness_center, // Dumbbell icon for Strength
+    },
+    {
+      'label': 'Cardio Blast',
+      'prompt': 'Design an effective cardio-focused workout to boost my endurance and burn calories',
+      'icon': Icons.directions_run, // Running icon for Cardio
+    },
+    {
+      'label': 'Core Power',
+      'prompt': 'Give me an effective core and abs workout routine with exercises that target all core muscles',
+      'icon': Icons.self_improvement, // Meditation/core icon
+    },
+    {
+      'label': 'Full Body',
+      'prompt': 'Create a complete full-body workout routine for today that hits all major muscle groups',
+      'icon': Icons.accessibility_new, // Full body icon
+    },
+    {
+      'label': 'Recovery Day',
+      'prompt': 'Suggest a light recovery workout with stretching, mobility exercises, and foam rolling guidance',
+      'icon': Icons.spa, // Spa/relaxation icon for Recovery
+    },
+    {
+      'label': 'Upper Body',
+      'prompt': 'Generate an upper body workout focusing on arms, chest, shoulders, and back with detailed exercise instructions',
+      'icon': Icons.sports_martial_arts, // Upper body strength icon
+    },
+    {
+      'label': 'Leg Day',
+      'prompt': 'Create an intense leg and glute workout routine with progressive exercises for strength building',
+      'icon': Icons.downhill_skiing, // Leg/skiing icon for Leg Day
+    },
+  ];
+
   // Animation controllers
   late AnimationController _historyAnimationController;
   late Animation<double> _historyAnimation;
@@ -388,23 +432,38 @@ $recentContext
             // App Bar with History Button
             _buildAppBar(isDarkMode),
 
-            // Main content
+            // Main content - Greeting positioned in middle-left
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 24, top: 120),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 24),
-
-                    // Greeting
-                    Text(
-                      'Hi, $userName! 👋',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                        letterSpacing: -0.5,
-                        height: 1.1,
+                    // Greeting with highlighted name
+                    RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'Hello ',
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
+                              letterSpacing: -0.5,
+                              height: 1.1,
+                            ),
+                          ),
+                          TextSpan(
+                            text: '$userName!',
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primaryAccent, // Orange/coral highlight
+                              letterSpacing: -0.5,
+                              height: 1.1,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -418,37 +477,6 @@ $recentContext
                         letterSpacing: 0.2,
                       ),
                     ),
-                    const SizedBox(height: 32),
-
-                    // Quick prompts
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        _buildQuickPromptChip(
-                          icon: Icons.fitness_center,
-                          label: 'Workout Plan',
-                          onTap: () => _sendMessage('Create a workout plan for today based on my goals'),
-                        ),
-                        _buildQuickPromptChip(
-                          icon: Icons.restaurant_menu,
-                          label: 'Meal Ideas',
-                          onTap: () => _sendMessage('Suggest healthy meal ideas for my goals'),
-                        ),
-                        _buildQuickPromptChip(
-                          icon: Icons.trending_up,
-                          label: 'Progress Check',
-                          onTap: () => _sendMessage('Analyze my recent progress and provide insights'),
-                        ),
-                        _buildQuickPromptChip(
-                          icon: Icons.psychology,
-                          label: 'Motivation',
-                          onTap: () => _sendMessage('I need some motivation to stay on track'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -640,6 +668,78 @@ $recentContext
     );
   }
 
+  Widget _buildQuickPromptsScroller(bool isDarkMode) {
+    return Container(
+      height: 50,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: _quickWorkoutPrompts.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final prompt = _quickWorkoutPrompts[index];
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _sendMessage(prompt['prompt'] as String),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isDarkMode
+                      ? AppTheme.darkCardBackground
+                      : AppTheme.cardBackgroundLight,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: AppTheme.primaryAccent.withOpacity(0.3),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.primaryAccent.withOpacity(0.08),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryAccent.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        prompt['icon'] as IconData, // Use custom icon for each prompt
+                        size: 14,
+                        color: AppTheme.primaryAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      prompt['label'] as String,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDarkMode
+                            ? AppTheme.textPrimaryDark
+                            : AppTheme.textPrimary,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildInputArea(bool isDarkMode) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -653,44 +753,53 @@ $recentContext
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              decoration: InputDecoration(
-                hintText: 'Ask me anything about fitness...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(25),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: isDarkMode
-                    ? AppTheme.darkBackground
-                    : Theme.of(context).scaffoldBackgroundColor,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
+          // Quick prompts horizontal scroller
+          _buildQuickPromptsScroller(isDarkMode),
+
+          // Input row
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  decoration: InputDecoration(
+                    hintText: 'Ask me anything about fitness...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(25),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: isDarkMode
+                        ? AppTheme.darkBackground
+                        : Theme.of(context).scaffoldBackgroundColor,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                  ),
+                  maxLines: null,
+                  textCapitalization: TextCapitalization.sentences,
+                  onSubmitted: (_) => _sendMessage(),
                 ),
               ),
-              maxLines: null,
-              textCapitalization: TextCapitalization.sentences,
-              onSubmitted: (_) => _sendMessage(),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            decoration: BoxDecoration(
-              gradient: AppTheme.primaryGradient,
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              onPressed: _isTyping ? null : _sendMessage,
-              icon: const Icon(
-                Icons.send,
-                color: Colors.white,
+              const SizedBox(width: 12),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  onPressed: _isTyping ? null : _sendMessage,
+                  icon: const Icon(
+                    Icons.send,
+                    color: Colors.white,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),

@@ -5,6 +5,7 @@ import '../../providers/nutrition_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/streak_provider.dart';
 import '../../config/theme_config.dart';
+import '../../utils/app_theme.dart';
 import 'profile_screen.dart';
 
 class NutritionHomeScreen extends StatefulWidget {
@@ -69,11 +70,18 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
-                          color: ThemeConfig.textPrimary,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? AppTheme.textPrimaryDark
+                              : AppTheme.textPrimary,
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.more_vert, color: ThemeConfig.textPrimary),
+                        icon: Icon(
+                          Icons.more_vert,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? AppTheme.textPrimaryDark
+                              : AppTheme.textPrimary,
+                        ),
                         onPressed: () {},
                         padding: EdgeInsets.zero,
                         constraints: BoxConstraints(),
@@ -229,6 +237,7 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
   Widget _buildHeroSection() {
     return Consumer3<NutritionProvider, UserProvider, StreakProvider>(
       builder: (context, nutritionProvider, userProvider, streakProvider, child) {
+        final isDarkMode = Theme.of(context).brightness == Brightness.dark;
         final profile = userProvider.profile;
         final caloriesTarget = profile?.dailyCaloriesTarget ?? 2000;
         final caloriesConsumed = nutritionProvider.todayNutrition.totalCalories;
@@ -289,14 +298,14 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
-                            color: ThemeConfig.textPrimary,
+                            color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
                           ),
                         ),
                         Text(
                           'KCAL LEFT',
                           style: TextStyle(
                             fontSize: 10,
-                            color: ThemeConfig.textSecondary,
+                            color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
                             letterSpacing: 1.2,
                             fontWeight: FontWeight.w500,
                           ),
@@ -329,6 +338,8 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
     required String value,
     required String label,
   }) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -339,7 +350,7 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: ThemeConfig.textPrimary,
+            color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
           ),
         ),
         SizedBox(height: 4),
@@ -347,7 +358,7 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
           label,
           style: TextStyle(
             fontSize: 10,
-            color: ThemeConfig.textSecondary,
+            color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
             letterSpacing: 1.2,
             fontWeight: FontWeight.w500,
           ),
@@ -411,6 +422,7 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
   Widget _buildMacroItem(String label, double consumed, double goal, Color color) {
     final left = (goal - consumed).clamp(0, double.infinity);
     final progress = (consumed / goal).clamp(0.0, 1.0);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Expanded(
       child: Column(
@@ -440,7 +452,7 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
             label,
             style: TextStyle(
               fontSize: 11,
-              color: ThemeConfig.textSecondary,
+              color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
               letterSpacing: 0.5,
               fontWeight: FontWeight.w500,
             ),
@@ -455,14 +467,14 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: ThemeConfig.textPrimary,
+                    color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
                   ),
                 ),
                 TextSpan(
                   text: ' left',
                   style: TextStyle(
                     fontSize: 13,
-                    color: ThemeConfig.textSecondary,
+                    color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
                     fontWeight: FontWeight.normal,
                   ),
                 ),

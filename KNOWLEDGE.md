@@ -3,6 +3,281 @@
 ## Project Overview
 Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracking application that integrates with Samsung Health, Google Fit, and Apple HealthKit to provide users with real-time health metrics, nutrition tracking, and achievement systems. The app features a unified OTP authentication system for seamless and secure user access.
 
+## Recent Updates (November 2025 - Version 1.0.14+18)
+
+### Dark Mode UI/UX Improvements (November 15, 2025)
+
+#### 1. Nutrition Home Screen Dark Mode Color Fixes
+**Problem**: Text in nutrition home screen was hard to read in dark mode - macro labels, calorie stats, and values appeared in dark grey/black colors against dark backgrounds, causing poor contrast and readability issues.
+
+**Root Cause**: Static color constants in `ThemeConfig` class (`textPrimary: Color(0xFF111111)`, `textSecondary: Color(0xFF4F4F4F)`) were hardcoded and didn't adapt to theme changes. These colors work well in light mode but become nearly invisible in dark mode.
+
+**Solution Implemented**:
+
+1. **Macro Breakdown Section** (`_buildMacroItem` method):
+   - Added dark mode detection: `isDarkMode = Theme.of(context).brightness == Brightness.dark`
+   - Updated label colors: Uses `AppTheme.textSecondaryDark` in dark mode for "CARB", "PROTEIN", "FAT" labels
+   - Updated value colors: Uses `AppTheme.textPrimaryDark` in dark mode for gram values
+   - Changed from static `ThemeConfig.textPrimary/textSecondary` to dynamic theme-aware colors
+
+2. **Hero Section Calorie Stats** (`_buildHeroSection` and `_buildStatColumn`):
+   - Center section ("2000 KCAL LEFT"): Updated to use `AppTheme.textPrimaryDark/textSecondaryDark` in dark mode
+   - Left section ("0 EATEN"): Fixed value and label colors for dark mode
+   - Right section ("0 STREAK"): Fixed value and label colors for dark mode
+   - All stat columns now properly adapt to theme changes
+
+3. **Header Section**:
+   - "Home" title: Now uses `AppTheme.textPrimaryDark` in dark mode
+   - Menu icon (three dots): Updated to match theme
+
+**Theme-Aware Color System**:
+```dart
+// Light Mode
+AppTheme.textPrimary = Color(0xFF111111)      // Near black
+AppTheme.textSecondary = Color(0xFF4F4F4F)    // Dark grey
+
+// Dark Mode
+AppTheme.textPrimaryDark = Color(0xFFFFFFFF)  // White
+AppTheme.textSecondaryDark = Color(0xFFB0B0B0) // Light grey
+```
+
+**Files Modified**:
+- `/lib/screens/main/nutrition_home_screen.dart` (lines 240, 301-308, 334-366)
+  - Updated `_buildHeroSection()` to include dark mode detection
+  - Updated `_buildStatColumn()` to use theme-aware colors
+  - Updated center "KCAL LEFT" section colors
+  - Updated macro breakdown colors in `_buildMacroItem()`
+  - Updated header "Home" title and menu icon colors
+
+**Testing**:
+- ✅ Verified on iPhone 16 Pro simulator
+- ✅ All text readable in both light and dark modes
+- ✅ Proper contrast ratios for accessibility
+- ✅ No regressions in light mode
+
+**Technical Pattern for Future Development**:
+```dart
+final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+Text(
+  label,
+  style: TextStyle(
+    color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
+  ),
+)
+```
+
+**Key Learnings**:
+- Always use `Theme.of(context).brightness` for dark mode detection
+- Avoid static const colors for text - use theme-aware colors instead
+- Create separate color constants for dark mode (`textPrimaryDark`, `textSecondaryDark`)
+- Test UI in both light and dark modes before deployment
+
+**Impact**:
+- Improved readability for ~30-40% of users who prefer dark mode
+- Better WCAG accessibility compliance
+- Enhanced user experience across different lighting conditions
+- No performance impact (theme detection is lightweight)
+
+#### 2. Workout Chat UI Improvements (November 14, 2025)
+
+**Features Implemented**:
+
+1. **Personalized Greeting with Highlighted Name**:
+   - Changed from generic "Hello User" to "Hello Vic!" with name highlighted in brand orange color
+   - Used RichText with TextSpan for multi-color text styling
+   - Name color: `AppTheme.primaryAccent` (orange/coral)
+   - Adapts to both dark and light modes
+
+2. **Horizontal Scrollable Workout Prompts**:
+   - Added 8 quick workout prompt chips above chat input
+   - Each chip has unique icon and 2-word label
+   - Clicking chip sends detailed AI prompt to workout coach
+   - Smooth horizontal scrolling with padding
+
+**Workout Prompt Chips**:
+- 🔥 Quick Burn → 15-minute high-intensity workout
+- 💪 Strength Focus → Comprehensive strength training
+- 🏃 Cardio Blast → Endurance and calorie burn workout
+- 🧘 Core Power → Core and abs routine
+- 🏋️ Full Body → Complete full-body workout
+- 🌸 Recovery Day → Light stretching and mobility
+- 🥊 Upper Body → Arms, chest, shoulders, back
+- ⛷️ Leg Day → Intense leg and glute workout
+
+3. **Clean Welcome Screen Layout**:
+   - Removed verbose "Explore Topics" section that caused overflow
+   - Repositioned greeting to middle-left (24px left, 120px top)
+   - Cleaner, more focused chat interface
+   - Better use of screen space
+
+**Files Modified**:
+- `/lib/screens/main/chat_screen.dart`
+  - Updated greeting section with RichText (lines ~300-330)
+  - Added `_buildQuickPromptsScroller()` widget
+  - Removed Explore Topics section
+  - Updated prompt data structure with icons
+
+**Design Details**:
+- Chip background: Themed card color with orange accent border
+- Chip padding: 16px horizontal, 10px vertical
+- Icon container: Orange-tinted background with rounded corners
+- Font: 13px semi-bold with 0.2px letter spacing
+- Horizontal scroll with 8px spacing between chips
+
+### Version Update
+- Bumped from 1.0.13+16 to 1.0.14+18
+- `/pubspec.yaml` - Version update
+- Build: 115s compilation time (Android AAB)
+- Successfully built for Play Store deployment
+
+## Recent Updates (October 2025 - Version 1.0.13+16)
+
+### UI Fixes and E-commerce Integration (October 29, 2025)
+
+#### 1. Odoo E-commerce Store Integration
+**Feature**: Integrated company Odoo store into the app for direct product sales
+
+**Implementation**:
+- Created full-featured `EcommerceScreen` with WebView integration
+- Added to Shop tab in bottom navigation (4th position)
+- Store URL: `https://streaker.odoo.com/?source=app`
+- Source tracking parameter enables analytics in Odoo backend
+
+**Features**:
+- Full WebView with back/forward navigation
+- Page refresh capability
+- Progress indicators during load
+- Error handling with retry mechanism
+- Pull-to-refresh support
+- Dynamic page titles
+
+**Files Created/Modified**:
+- `/lib/screens/main/ecommerce_screen.dart` - NEW (317 lines)
+- `/lib/screens/main/main_screen.dart` - Updated Shop tab URL and title
+- Added comprehensive e-commerce documentation
+
+**Revenue Potential**:
+- Conservative estimate: ₹36,000/month (10K MAU, 5% conversion)
+- Optimized estimate: ₹98,000/month (with personalization)
+- 4-10x improvement over Amazon affiliate model
+- 30-40% profit margin vs 3-10% commission
+
+**Documentation Added**:
+- Desktop: `ODOO_ECOMMERCE_INTEGRATION_GUIDE.md` - 400+ line comprehensive guide
+- Desktop: `ODOO_INTEGRATION_QUICK_START.md` - Quick reference
+- Includes revenue projections, testing checklists, and optimization roadmap
+
+#### 2. Camera Icon Keyboard Fix
+**Problem**: Camera FAB (FloatingActionButton) rising with keyboard when typing in chat screen
+
+**Root Cause**: MainScreen's Scaffold was responding to keyboard insets and pushing FAB up
+
+**Solution**:
+- Added `resizeToAvoidBottomInset: false` to MainScreen's Scaffold (line 658)
+- ChatScreen maintains its own `resizeToAvoidBottomInset: true` for proper content resizing
+- FAB now stays fixed at bottom while chat input area properly adjusts
+
+**Technical Details**:
+- ChatScreen resizes within IndexedStack independently
+- MainScreen (with FAB and bottom nav) remains fixed
+- No regression in chat input functionality
+
+**Files Modified**:
+- `/lib/screens/main/main_screen.dart:658` - Added resizeToAvoidBottomInset
+
+#### 3. Weight Stats Summary Overflow Fix
+**Problem**: Weight stats summary showing "right overflowed by 2.1 pixels" on various devices
+
+**Root Cause**: Excessive fixed spacing (SizedBox + margins + padding = ~76 pixels) for 4 stat cards
+
+**Solution**:
+- Removed 3 manual `SizedBox(width: 12)` spacers between cards
+- Reduced horizontal margin: 20 → 16 pixels
+- Reduced horizontal padding: 16 → 12 pixels
+- Changed to `MainAxisAlignment.spaceEvenly` for flexible distribution
+- Total space saved: ~44 pixels
+
+**Files Modified**:
+- `/lib/widgets/weight_stats_summary.dart:22-79`
+
+**Result**: Layout now adapts to all screen sizes without overflow
+
+#### 4. Chat Screen Improvements
+**Problem**: "Explore Topics" section causing 11 pixel overflow and unnecessary screen clutter
+
+**Solution**:
+- Removed entire "Explore Topics" GridView section (lines 451-524)
+- Removed section header with icon and title
+- Removed 4 topic tiles (Strength, Cardio, Nutrition, Recovery)
+- Cleaner, more focused chat interface
+
+**Files Modified**:
+- `/lib/screens/main/chat_screen.dart` - Removed Explore Topics section
+
+#### 5. Bottom Navigation Updates
+**Current Structure** (5 tabs):
+1. Home (Nutrition Home)
+2. Weight (Weight Progress)
+3. FAB (Camera - Food Scanning)
+4. Workouts (Chat/AI Coach)
+5. Shop (Odoo E-commerce) ← NEW
+6. Profile (5th tab, also accessible via avatar)
+
+**Previous Structure** (4 tabs):
+- Shop tab replaced Profile tab in bottom nav
+- Profile still accessible via top-left avatar icon
+- Both navigation methods maintained for user preference
+
+**Files Modified**:
+- `/lib/screens/main/main_screen.dart` - Updated navigation structure
+
+### Version Update
+- Bumped from 1.0.12+15 to 1.0.13+16
+- `/pubspec.yaml` - Version update
+- Build: 25.2s compilation time
+- Successfully deployed to Samsung SM S731B (RZCY91SVGSY)
+
+### Git Repository Updates
+**Repository**: https://github.com/victorsolmn/Streaker_app.git
+**Branch**: feature/streak-system-rebuild
+**Commit**: 594fb9d
+
+**Changes Pushed**:
+- 14 files changed
+- 1,445 insertions, 95 deletions
+- All e-commerce integration code
+- UI fixes and improvements
+- Documentation updates
+
+### Documentation Created
+**In Repository**:
+- `NAVIGATION_REDESIGN_GUIDE.md` - Comprehensive navigation documentation
+- `NAVIGATION_REDESIGN_SUMMARY.md` - Executive summary
+- `ISSUES_RESOLVED_2025-10-28.md` - Issue tracking
+- `CREATE_APP_CONFIG_TABLE.md` - Configuration guide
+
+**On Desktop** (not in repo):
+- `ODOO_ECOMMERCE_INTEGRATION_GUIDE.md` - Full implementation guide
+- `ODOO_INTEGRATION_QUICK_START.md` - Quick reference
+
+### Strategic Impact
+**E-commerce Integration Benefits**:
+- **Contextual Shopping**: Users shop when motivated (post-workout)
+- **Trust Transfer**: App trust extends to product recommendations
+- **No Friction**: In-app shopping eliminates app switching
+- **Data Ownership**: Full control over customer journey and analytics
+- **Higher Margins**: 30-40% profit vs 3-10% affiliate commission
+
+**Next Phase Enhancements** (Future):
+1. Personalized landing pages based on fitness goals
+2. Post-workout shopping prompts with discounts
+3. Wishlist integration in Profile screen
+4. Streak-based reward system for purchases
+5. AI product recommendations based on user data
+
+---
+
 ## Recent Updates (October 2025 - Version 1.0.12+15)
 
 ### Nutrition Entry Save Fix (October 22, 2025)
