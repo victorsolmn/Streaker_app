@@ -11,7 +11,7 @@ import '../../services/popup_service.dart';
 import 'nutrition_home_screen.dart';
 import 'weight_home_screen.dart';
 import 'chat_screen.dart';
-import 'ecommerce_screen.dart';
+import 'marketplace_screen.dart';
 import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -103,10 +103,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     ),
     const WeightHomeScreen(),
     const ChatScreen(),
-    const EcommerceScreen(
-      initialUrl: 'https://streaker.odoo.com/?source=app', // Streaker store with app tracking
-      title: 'Streaker Shop',
-    ),
+    const MarketplaceScreen(), // New supplement marketplace
     const ProfileScreen(),
   ];
 

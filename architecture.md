@@ -52,7 +52,8 @@ lib/
 │   │   ├── profile_screen.dart        # User profile
 │   │   ├── main_screen.dart          # Navigation container (5 tabs)
 │   │   ├── chat_screen.dart          # AI Coach / Workouts
-│   │   ├── ecommerce_screen.dart     # Odoo shop integration (NEW v1.0.13)
+│   │   ├── marketplace_screen.dart   # Supplement marketplace (REPLACED v1.0.14)
+│   │   ├── cart_screen.dart          # Shopping cart with WhatsApp checkout (NEW v1.0.14)
 │   │   └── nutrition_home_screen.dart # Nutrition home
 │   └── legal/                   # Legal screens
 │       ├── privacy_policy_screen.dart
@@ -62,6 +63,7 @@ lib/
 │   ├── health_provider.dart          # Health metrics state
 │   ├── nutrition_provider.dart       # Nutrition tracking
 │   ├── streak_provider.dart          # Streak management
+│   ├── marketplace_provider.dart     # E-commerce cart & products (NEW v1.0.14)
 │   └── supabase_auth_provider.dart   # Authentication
 ├── services/                    # Business logic
 │   ├── unified_health_service.dart   # Health data aggregation
@@ -72,7 +74,9 @@ lib/
 ├── models/                      # Data models
 │   ├── user_model.dart
 │   ├── streak_model.dart
-│   └── health_metrics_model.dart
+│   ├── health_metrics_model.dart
+│   ├── product_model.dart           # E-commerce products (NEW v1.0.14)
+│   └── premium_membership_model.dart # Premium subscriptions (NEW v1.0.14)
 ├── widgets/                     # Reusable components
 │   ├── force_update_dialog.dart
 │   ├── app_wrapper.dart
@@ -114,6 +118,14 @@ lib/
 - Manages current and longest streaks
 - Handles grace period logic
 - Real-time updates via Supabase
+
+**MarketplaceProvider** (Added November 16, 2025 - v1.0.14)
+- Manages product catalog and categories
+- Handles shopping cart state (add, update, remove, clear)
+- Tracks premium membership status and discounts
+- Calculates cart totals, savings, and item counts
+- Syncs with Supabase tables: products, shopping_cart, premium_memberships
+- Category filtering and product search capabilities
 
 ### 2. Service Layer
 
@@ -261,6 +273,73 @@ User Browses/Purchases
 - `longest_streak` (integer)
 - `last_completed_date` (date)
 - `grace_days_used` (integer)
+
+### E-Commerce Tables (Added November 16, 2025 - v1.0.14)
+
+**product_categories**
+- `id` (uuid, primary key)
+- `name` (text) - e.g., "Protein", "Pre-Workout"
+- `slug` (text) - URL-friendly identifier
+- `icon` (text) - Icon name for UI
+- `display_order` (integer)
+- `is_active` (boolean)
+
+**products**
+- `id` (uuid, primary key)
+- `name` (text)
+- `brand` (text)
+- `category_id` (uuid, foreign key)
+- `description` (text)
+- `regular_price` (decimal)
+- `premium_price` (decimal) - 25% discount
+- `stock_quantity` (integer)
+- `is_featured` (boolean)
+- `serving_size` (text)
+- `flavor` (text, nullable)
+- `image_url` (text, nullable)
+- `is_active` (boolean)
+
+**shopping_cart**
+- `id` (uuid, primary key)
+- `user_id` (uuid, foreign key)
+- `product_id` (uuid, foreign key)
+- `quantity` (integer)
+- `created_at`, `updated_at` (timestamp)
+- Composite unique: (user_id, product_id)
+- RLS Policy: Users can only access their own cart
+
+**premium_memberships**
+- `id` (uuid, primary key)
+- `user_id` (uuid, foreign key)
+- `plan_type` (text) - 'monthly', 'quarterly', 'annual'
+- `discount_percentage` (integer) - Default 25%
+- `start_date`, `end_date` (date)
+- `status` (text) - 'active', 'expired', 'cancelled'
+- `price_paid` (decimal)
+- `payment_id` (text, nullable)
+
+**orders**
+- `id` (uuid, primary key)
+- `user_id` (uuid, foreign key)
+- `order_number` (text) - Format: STR-YYYYMMDD-XXXX
+- `status` (text) - 'pending', 'confirmed', 'shipped', 'delivered', 'cancelled'
+- `total_amount` (decimal)
+- `is_premium_order` (boolean)
+- `discount_applied` (decimal)
+- `shipping_address` (text)
+- `contact_number` (text)
+- `notes` (text, nullable)
+- `created_at`, `updated_at` (timestamp)
+
+**order_items**
+- `id` (uuid, primary key)
+- `order_id` (uuid, foreign key)
+- `product_id` (uuid, foreign key)
+- `product_name` (text) - Snapshot at time of order
+- `product_brand` (text)
+- `quantity` (integer)
+- `unit_price` (decimal)
+- `subtotal` (decimal)
 
 ## Authentication Flow
 
