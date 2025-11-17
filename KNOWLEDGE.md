@@ -3,6 +3,239 @@
 ## Project Overview
 Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracking application that integrates with Samsung Health, Google Fit, and Apple HealthKit to provide users with real-time health metrics, nutrition tracking, and achievement systems. The app features a unified OTP authentication system for seamless and secure user access.
 
+## Recent Updates (November 2025 - Version 1.0.15+19)
+
+### Weekly Calendar Date Navigation (November 17, 2025)
+
+#### Implementation Overview
+**Feature**: Interactive weekly calendar with date selection, week navigation, and historical data viewing for nutrition tracking.
+
+#### What Was Built
+
+**1. Backend State Management** (`/lib/providers/nutrition_provider.dart`)
+- **Date Selection State**:
+  - Added `_selectedDate` state variable for tracking currently selected date
+  - Created `selectDate(DateTime)` method for date selection with data loading
+  - Created `resetToToday()` method to return to current date
+  - Created `loadNutritionForDate(DateTime)` method to fetch date-specific entries
+  - Added getters: `selectedDate`, `selectedDateNutrition`, `selectedDateEntries`
+
+**2. Supabase Service Integration** (`/lib/services/supabase_service.dart`)
+- Added `getNutritionEntriesForDate()` method for date-specific queries
+- Filters nutrition entries by user_id and exact date match
+- Returns sorted list by created_at timestamp
+
+**3. Streak Provider Enhancement** (`/lib/providers/streak_provider.dart`)
+- Added `loadMetricsForDate(DateTime)` method for historical metrics
+- **CRITICAL BUG FIX**: Fixed `allGoalsAchieved` flag not being set (line 250)
+  - Before: Only `nutritionAchieved` was set, causing incorrect strikethrough display
+  - After: Both `nutritionAchieved` and `allGoalsAchieved` set when nutrition goal met
+  - Root cause: Nutrition-only tracking system but retained old multi-goal model structure
+- Queries profiles table for calorie targets
+- Calculates goal achievement with 80-110% target range
+
+**4. UI Implementation** (`/lib/screens/main/nutrition_home_screen.dart`)
+
+**Weekly Calendar Features**:
+- **Week Navigation Arrows**: Left/right arrows to navigate between weeks
+- **Disabled Future Dates**: Users cannot select dates beyond today
+- **Return to Today Button**: Quick navigation back to current date
+- **Date Selection**: Tap any date to view that day's data
+- **Smooth Animations**: AnimatedContainer with 200ms transitions
+- **Visual Indicators**:
+  - Fire emoji inline with date (🔥16) for streak days
+  - Red strikethrough for missed days
+  - Orange selection highlight for selected date
+  - Grey disabled state for future dates
+
+**Calendar Logic**:
+```dart
+// Calculate current week (Sun-Sat)
+_currentWeekStart = DateTime(today.year, today.month, today.day)
+    .subtract(Duration(days: today.weekday % 7));
+
+// Check streak status
+final hasStreak = streakProvider.recentMetrics.any((metric) =>
+  _isSameDay(metric.date, date) && metric.allGoalsAchieved
+);
+
+// Check missed status (has data but goal not achieved)
+final wasMissed = !hasStreak && streakProvider.recentMetrics.any((metric) =>
+  _isSameDay(metric.date, date) && !metric.allGoalsAchieved
+);
+```
+
+**Hero Section Updates**:
+- Changed from `todayNutrition` to `selectedDateNutrition`
+- Displays data for selected date instead of hardcoded today
+- All calorie stats, macros, and entries update dynamically
+
+#### Key Features
+
+**Navigation Controls**:
+- Left arrow: Navigate to previous week
+- Right arrow: Navigate to next week (disabled if it includes future dates)
+- "Today" button: Instant return to current date with visual feedback
+
+**Date Indicators**:
+- **Today**: Orange border around date
+- **Selected**: Orange background with white text
+- **Streak Day**: Fire emoji prefix (🔥) with date number
+- **Missed Day**: Red strikethrough line
+- **Future Day**: Greyed out, non-clickable
+
+**Data Loading Flow**:
+```
+User Taps Date
+    ↓
+NutritionProvider.selectDate(date)
+    ↓
+loadNutritionForDate(date)
+    ↓
+SupabaseService.getNutritionEntriesForDate()
+    ↓
+Update _entries list
+    ↓
+notifyListeners()
+    ↓
+UI rebuilds with selected date data
+```
+
+#### Bug Fixes
+
+**Issue 1: Strikethrough Showing on Streak Days**
+- **Problem**: Nov 16 showed both fire emoji AND strikethrough despite being a streak day
+- **First Attempt**: Modified `wasMissed` logic to check `!hasStreak` first (line 288)
+- **Result**: Issue persisted after rebuild
+- **Root Cause Discovery**: In `streak_provider.dart:248`, only `nutritionAchieved` was being set, not `allGoalsAchieved`
+- **Final Fix**: Added `allGoalsAchieved: goalAchieved` to copyWith call (line 250)
+- **Why It Worked**: Calendar UI checks `metric.allGoalsAchieved`, so it was always false causing incorrect display
+
+**Issue 2: Fire Emoji Display Inconsistency**
+- **Problem**: Fire emoji showing as separate badge (🔥1) instead of inline with date
+- **User Expectation**: Unified display like "🔥16" for visual consistency
+- **Solution**: Replaced Positioned badge widget with RichText inline display
+- **Implementation**:
+```dart
+RichText(
+  text: TextSpan(
+    children: [
+      if (hasStreak && !isSelected)
+        TextSpan(text: '🔥', style: TextStyle(fontSize: 13)),
+      TextSpan(
+        text: date.day.toString(),
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, ...),
+      ),
+    ],
+  ),
+)
+```
+
+#### Technical Implementation Details
+
+**State Management Pattern**:
+- Provider-based state with ChangeNotifier
+- Consumer2 and Consumer3 for multi-provider watching
+- Optimistic UI updates with loading states
+
+**Date Normalization**:
+```dart
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+```
+
+**Week Calculation**:
+- Week starts on Sunday (weekday % 7 calculation)
+- 7-day array generated from weekStart
+- Validated against today for future date disabling
+
+**Animation Details**:
+- Container transition: 200ms duration
+- Border and background color changes
+- No layout shifts (consistent sizing)
+
+#### Files Modified/Created
+```
+MODIFIED FILES:
+- lib/providers/nutrition_provider.dart (~120 lines added)
+- lib/services/supabase_service.dart (~25 lines added)
+- lib/providers/streak_provider.dart (~65 lines added, 1 critical bug fix)
+- lib/screens/main/nutrition_home_screen.dart (~250 lines modified)
+- pubspec.yaml (version 1.0.14+18 → 1.0.15+19)
+```
+
+#### Testing
+
+**Devices Tested**:
+- ✅ iPhone 16 Plus simulator (iOS 18.6)
+- ✅ Samsung S731B (Android, physical device)
+- ✅ iPhone 16 Pro (physical device)
+
+**Test Cases**:
+- ✅ Week navigation (forward/backward)
+- ✅ Date selection updates all data
+- ✅ Future dates disabled
+- ✅ Return to today button works
+- ✅ Fire emoji shows only on streak days
+- ✅ Strikethrough shows only on missed days
+- ✅ Food entries load for selected date
+- ✅ Dark mode compatibility
+- ✅ No UI overflow on any device
+
+#### User Experience Improvements
+
+**Before**:
+- Only current day's data visible
+- No historical data access
+- No visual streak indicators on calendar
+- Static, non-interactive date display
+
+**After**:
+- Complete week view with navigation
+- Access to any historical date
+- Visual streak indicators (fire emoji, strikethrough)
+- Interactive calendar with smooth animations
+- Context-aware return to today button
+- Clear visual feedback for all actions
+
+#### Key Learnings
+
+1. **Data Model Consistency**: Old multi-goal model (5 health metrics) caused confusion with new nutrition-only tracking. Both flags must be set when transitioning models.
+
+2. **UI Iteration**: First iteration had separate badge, but unified inline display (🔥16) provides better visual consistency and user clarity.
+
+3. **Provider Coordination**: Three providers (Nutrition, Streak, User) working together requires careful state synchronization and update sequencing.
+
+4. **Date Handling**: DateTime normalization critical for accurate comparisons across time zones and daylight saving changes.
+
+5. **Visual Feedback**: Users need clear indicators for:
+   - What's selectable (clickable vs disabled)
+   - What's selected (current state)
+   - What happened (streaks vs missed)
+   - Where they are (today indicator)
+
+#### Impact
+
+- **User Engagement**: Historical data access encourages users to review past performance
+- **Motivation**: Visual streak indicators (fire emojis) provide gamification and motivation
+- **Transparency**: Clear view of missed days helps users understand streak breaks
+- **Data Insights**: Ability to review any day's food entries aids in pattern recognition
+- **Trust**: Accurate historical data builds confidence in app tracking
+
+#### Future Enhancements
+
+**Potential Additions**:
+1. Swipe gestures for week navigation
+2. Month view with heatmap visualization
+3. Tap and hold for date details preview
+4. Export week's data as report
+5. Compare multiple dates side-by-side
+6. Streak statistics overlay on calendar
+7. Notes/journal entries for specific dates
+
+---
+
 ## Recent Updates (November 2025 - Version 1.0.14+18)
 
 ### Supplement Marketplace with Cart System (November 16, 2025)

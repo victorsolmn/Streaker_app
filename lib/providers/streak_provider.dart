@@ -152,6 +152,66 @@ class StreakProvider extends ChangeNotifier {
       _setError('Failed to load today\'s metrics');
     }
   }
+
+  // Load metrics for a specific date (for date navigation feature)
+  Future<void> loadMetricsForDate(DateTime date) async {
+    try {
+      final userId = _supabaseService.currentUser?.id;
+      if (userId == null) return;
+
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      debugPrint('📅 Loading metrics for date: $dateStr');
+
+      // Get user's calorie target from profile
+      final profileResponse = await _supabaseService.client
+          .from('profiles')
+          .select('daily_calories_target')
+          .eq('id', userId)
+          .maybeSingle();
+
+      final caloriesGoal = profileResponse?['daily_calories_target'] ?? 2000;
+
+      // Get nutrition entries for the specific date
+      final nutritionResponse = await _supabaseService.client
+          .from('nutrition_entries')
+          .select('calories')
+          .eq('user_id', userId)
+          .eq('date', dateStr);
+
+      // Calculate total calories consumed
+      int totalCalories = 0;
+      if (nutritionResponse != null && (nutritionResponse as List).isNotEmpty) {
+        totalCalories = (nutritionResponse as List)
+            .fold<int>(0, (sum, entry) => sum + ((entry['calories'] as num?)?.toInt() ?? 0));
+      }
+
+      // Calculate if goal is achieved (80% - 110% of target)
+      final minCalories = (caloriesGoal * 0.8).toInt();
+      final maxCalories = (caloriesGoal * 1.1).toInt();
+      final goalAchieved = totalCalories >= minCalories && totalCalories <= maxCalories;
+
+      // Create metrics for selected date
+      _todayMetrics = UserDailyMetrics(
+        userId: userId,
+        date: date,
+        caloriesConsumed: totalCalories,
+        caloriesGoal: caloriesGoal,
+      );
+
+      // Update goal achievement status
+      _todayMetrics = _todayMetrics!.copyWith(
+        nutritionAchieved: goalAchieved,
+      );
+
+      debugPrint('✅ Loaded metrics for $dateStr: $totalCalories/$caloriesGoal kcal (achieved: $goalAchieved)');
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ Error loading metrics for date: $e');
+      _setError('Failed to load metrics for selected date');
+    }
+  }
   
   // Load recent metrics for history (nutrition-based)
   // UPDATED: Now uses daily_nutrition_summary table for better performance
@@ -185,7 +245,10 @@ class StreakProvider extends ChangeNotifier {
             date: date,
             caloriesConsumed: totalCalories,
             caloriesGoal: caloriesGoal,
-          ).copyWith(nutritionAchieved: goalAchieved));
+          ).copyWith(
+            nutritionAchieved: goalAchieved,
+            allGoalsAchieved: goalAchieved,  // In nutrition-only system, these are the same
+          ));
         }
       }
 

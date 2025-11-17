@@ -269,7 +269,7 @@ class SupabaseService {
       final today = DateTime.now();
       final startOfDay = DateTime(today.year, today.month, today.day);
       final endOfDay = startOfDay.add(Duration(days: 1));
-      
+
       final response = await _supabase
           .from('nutrition_entries')
           .select()
@@ -277,10 +277,36 @@ class SupabaseService {
           .gte('created_at', startOfDay.toIso8601String())
           .lt('created_at', endOfDay.toIso8601String())
           .order('created_at', ascending: false);
-      
+
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error loading today\'s nutrition: $e');
+      return [];
+    }
+  }
+
+  // Get nutrition entries for a specific date (for date navigation feature)
+  Future<List<Map<String, dynamic>>> getNutritionEntriesForDate({
+    required String userId,
+    required DateTime date,
+  }) async {
+    try {
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      debugPrint('📅 Fetching nutrition entries for date: $dateStr');
+
+      final response = await _supabase
+          .from('nutrition_entries')
+          .select()
+          .eq('user_id', userId)
+          .eq('date', dateStr)
+          .order('created_at', ascending: false);
+
+      debugPrint('✅ Found ${(response as List).length} entries for $dateStr');
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('❌ Error loading nutrition for date: $e');
       return [];
     }
   }

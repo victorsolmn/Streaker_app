@@ -11,6 +11,7 @@ import '../services/indian_food_nutrition_service.dart';
 import '../services/realtime_sync_service.dart';
 import '../services/supabase_service.dart';
 import '../services/database_sync_service.dart';
+import '../services/offline_queue_service.dart';
 
 class NutritionEntry {
   final String id;
@@ -89,7 +90,8 @@ class NutritionProvider with ChangeNotifier {
   final IndianFoodNutritionService _indianFoodService = IndianFoodNutritionService();
   final RealtimeSyncService _syncService = RealtimeSyncService();
   final SupabaseService _supabaseService = SupabaseService();
-  
+  late final OfflineQueueService _offlineQueue;
+
   // Connectivity and sync management
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -97,6 +99,10 @@ class NutritionProvider with ChangeNotifier {
   Timer? _syncTimer;
   DateTime? _lastSyncTime;
   bool _isSyncing = false;
+  int _pendingSyncCount = 0;
+
+  // Date selection for viewing historical data
+  DateTime _selectedDate = DateTime.now();
 
   // Daily goals
   int _calorieGoal = 2000;
@@ -105,6 +111,7 @@ class NutritionProvider with ChangeNotifier {
   double _fatGoal = 67.0;
 
   NutritionProvider(this._prefs) {
+    _offlineQueue = OfflineQueueService(_prefs);
     _initializeData();
     _setupConnectivityMonitoring();
     _setupPeriodicSync();
@@ -113,22 +120,29 @@ class NutritionProvider with ChangeNotifier {
   Future<void> _initializeData() async {
     await _loadGoals();
     await loadDataFromSupabase();
-    
+
     // Check initial connectivity
     final connectivityResult = await _connectivity.checkConnectivity();
     _isOnline = !connectivityResult.contains(ConnectivityResult.none);
+
+    // Load pending sync count
+    _pendingSyncCount = await _offlineQueue.getQueueCount();
+    debugPrint('📦 Offline queue initialized: $_pendingSyncCount pending entries');
   }
   
   void _setupConnectivityMonitoring() {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
       final wasOffline = !_isOnline;
       _isOnline = !results.contains(ConnectivityResult.none);
-      
+
       if (wasOffline && _isOnline) {
-        debugPrint('NutritionProvider: Connection restored - syncing data with Supabase');
+        debugPrint('📡 NutritionProvider: Connection restored - syncing offline queue and data');
+        _syncOfflineQueue(); // NEW: Sync offline queue first
         _syncToSupabase();
         loadDataFromSupabase();
       }
+
+      notifyListeners(); // Notify UI of network status change
     });
   }
   
@@ -152,7 +166,10 @@ class NutritionProvider with ChangeNotifier {
   List<NutritionEntry> get entries => _entries;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  
+  bool get isOnline => _isOnline;
+  int get pendingSyncCount => _pendingSyncCount;
+  DateTime get selectedDate => _selectedDate;
+
   int get calorieGoal => _calorieGoal;
   double get proteinGoal => _proteinGoal;
   double get carbGoal => _carbGoal;
@@ -171,6 +188,32 @@ class NutritionProvider with ChangeNotifier {
 
   // Helper getter for today's entries
   List<NutritionEntry> get todayEntries => todayNutrition.entries;
+
+  // Getter for selected date nutrition (for date navigation feature)
+  DailyNutrition get selectedDateNutrition {
+    final selectedEntries = _entries.where((entry) {
+      return entry.timestamp.year == _selectedDate.year &&
+             entry.timestamp.month == _selectedDate.month &&
+             entry.timestamp.day == _selectedDate.day;
+    }).toList();
+
+    return DailyNutrition(date: _selectedDate, entries: selectedEntries);
+  }
+
+  // Helper getter for selected date entries
+  List<NutritionEntry> get selectedDateEntries => selectedDateNutrition.entries;
+
+  // Select a specific date and load its nutrition data
+  Future<void> selectDate(DateTime date) async {
+    _selectedDate = DateTime(date.year, date.month, date.day); // Normalize to start of day
+    await loadNutritionForDate(date);
+    notifyListeners();
+  }
+
+  // Reset to today's date
+  Future<void> resetToToday() async {
+    await selectDate(DateTime.now());
+  }
 
   // Load today's nutrition data (loads ONLY today's entries for accurate home page display)
   Future<void> loadTodayNutrition() async {
@@ -213,6 +256,55 @@ class NutritionProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('Error loading today\'s nutrition: $e');
       await _loadNutritionData();
+      _setLoading(false);
+    }
+  }
+
+  // Load nutrition data for a specific date
+  Future<void> loadNutritionForDate(DateTime date) async {
+    final userId = _supabaseService.currentUser?.id;
+    if (userId == null) {
+      await _loadNutritionData();
+      return;
+    }
+
+    _setLoading(true);
+    try {
+      debugPrint('📅 Loading nutrition for date: ${date.year}-${date.month}-${date.day}');
+
+      // Get entries for the specific date
+      final dateEntries = await _supabaseService.getNutritionEntriesForDate(
+        userId: userId,
+        date: date,
+      );
+
+      // Clear entries and load date-specific data
+      _entries.clear();
+
+      for (final entry in dateEntries) {
+        final timestamp = entry['created_at'] != null
+            ? DateTime.parse(entry['created_at'])
+            : DateTime.parse(entry['date'] ?? DateTime.now().toIso8601String());
+
+        final foodName = entry['food_name'] ?? 'Unknown';
+
+        _entries.add(NutritionEntry(
+          id: entry['id'] ?? '${timestamp.millisecondsSinceEpoch}_$foodName',
+          foodName: foodName,
+          calories: entry['calories'] ?? 0,
+          protein: (entry['protein'] ?? 0).toDouble(),
+          carbs: (entry['carbs'] ?? 0).toDouble(),
+          fat: (entry['fat'] ?? 0).toDouble(),
+          timestamp: timestamp,
+        ));
+      }
+
+      debugPrint('✅ Loaded ${_entries.length} entries for ${date.year}-${date.month}-${date.day}');
+
+      _setLoading(false);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ Error loading nutrition for date: $e');
       _setLoading(false);
     }
   }
@@ -474,18 +566,24 @@ class NutritionProvider with ChangeNotifier {
 
           // Check if entry already exists in database
           if (!existingEntryKeys.contains(entryKey) && !syncedEntryIds.contains(entryKey)) {
-            await _supabaseService.saveNutritionEntry(
-              userId: userId,
-              foodName: entry.foodName,
-              calories: entry.calories,
-              protein: entry.protein,
-              carbs: entry.carbs,
-              fat: entry.fat,
-              // Note: fiber parameter removed - field doesn't exist in database
-              timestamp: entry.timestamp,
-            );
-            syncedEntryIds.add(entryKey);
-            debugPrint('Synced nutrition entry: ${entry.foodName}');
+            try {
+              await _supabaseService.saveNutritionEntry(
+                userId: userId,
+                foodName: entry.foodName,
+                calories: entry.calories,
+                protein: entry.protein,
+                carbs: entry.carbs,
+                fat: entry.fat,
+                // Note: fiber parameter removed - field doesn't exist in database
+                timestamp: entry.timestamp,
+              );
+              syncedEntryIds.add(entryKey);
+              debugPrint('✅ Synced nutrition entry: ${entry.foodName}');
+            } catch (e) {
+              // NEW: Add to offline queue if sync fails
+              debugPrint('❌ Failed to sync ${entry.foodName}, adding to offline queue: $e');
+              await _addEntryToOfflineQueue(entry, userId);
+            }
           } else {
             debugPrint('Skipping duplicate entry: ${entry.foodName}');
           }
@@ -493,12 +591,79 @@ class NutritionProvider with ChangeNotifier {
       }
 
       _lastSyncTime = DateTime.now();
-      debugPrint('NutritionProvider: Sync to Supabase completed successfully');
+      debugPrint('✅ NutritionProvider: Sync to Supabase completed successfully');
     } catch (e) {
-      debugPrint('Error syncing to Supabase: $e');
+      debugPrint('❌ Error syncing to Supabase: $e');
     } finally {
       _isSyncing = false;
     }
+  }
+
+  /// NEW: Add entry to offline queue when sync fails
+  Future<void> _addEntryToOfflineQueue(NutritionEntry entry, String userId) async {
+    final entryData = {
+      'user_id': userId,
+      'food_name': entry.foodName,
+      'calories': entry.calories,
+      'protein': entry.protein,
+      'carbs': entry.carbs,
+      'fat': entry.fat,
+      'created_at': entry.timestamp.toIso8601String(),
+      'date': '${entry.timestamp.year}-${entry.timestamp.month.toString().padLeft(2, '0')}-${entry.timestamp.day.toString().padLeft(2, '0')}',
+    };
+
+    await _offlineQueue.addToQueue(entryData);
+    _pendingSyncCount = await _offlineQueue.getQueueCount();
+    notifyListeners(); // Update UI with new pending count
+  }
+
+  /// NEW: Sync offline queue when network is restored
+  Future<void> _syncOfflineQueue() async {
+    final userId = _supabaseService.currentUser?.id;
+    if (userId == null || !_isOnline) return;
+
+    final queue = await _offlineQueue.getQueue();
+    if (queue.isEmpty) {
+      debugPrint('📦 Offline queue is empty, nothing to sync');
+      return;
+    }
+
+    debugPrint('📦 Syncing offline queue: ${queue.length} pending entries');
+
+    int successCount = 0;
+    int failCount = 0;
+
+    for (final entryData in queue) {
+      try {
+        await _supabaseService.saveNutritionEntry(
+          userId: userId,
+          foodName: entryData['food_name'],
+          calories: entryData['calories'],
+          protein: (entryData['protein'] ?? 0).toDouble(),
+          carbs: (entryData['carbs'] ?? 0).toDouble(),
+          fat: (entryData['fat'] ?? 0).toDouble(),
+          timestamp: DateTime.parse(entryData['created_at']),
+        );
+
+        await _offlineQueue.removeFromQueue(entryData);
+        successCount++;
+        debugPrint('✅ Synced offline entry: ${entryData['food_name']}');
+      } catch (e) {
+        await _offlineQueue.incrementRetryCount(entryData);
+        failCount++;
+        debugPrint('❌ Failed to sync offline entry: ${entryData['food_name']} - $e');
+      }
+    }
+
+    _pendingSyncCount = await _offlineQueue.getQueueCount();
+    debugPrint('📦 Offline queue sync complete: $successCount succeeded, $failCount failed');
+
+    if (successCount > 0) {
+      // Trigger database sync to update metrics after syncing offline entries
+      await _triggerDatabaseSync();
+    }
+
+    notifyListeners();
   }
 
   Future<void> removeNutritionEntry(String entryId) async {

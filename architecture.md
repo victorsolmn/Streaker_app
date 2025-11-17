@@ -54,7 +54,7 @@ lib/
 │   │   ├── chat_screen.dart          # AI Coach / Workouts
 │   │   ├── marketplace_screen.dart   # Supplement marketplace (REPLACED v1.0.14)
 │   │   ├── cart_screen.dart          # Shopping cart with WhatsApp checkout (NEW v1.0.14)
-│   │   └── nutrition_home_screen.dart # Nutrition home
+│   │   └── nutrition_home_screen.dart # Nutrition home with weekly calendar (ENHANCED v1.0.15)
 │   └── legal/                   # Legal screens
 │       ├── privacy_policy_screen.dart
 │       └── terms_conditions_screen.dart
@@ -112,12 +112,25 @@ lib/
 - Calculates daily totals
 - Manages nutrition entries
 - Syncs with `nutrition_entries` table
+- **Date Navigation** (Added November 17, 2025 - v1.0.15):
+  - Maintains `_selectedDate` state for viewing historical data
+  - `selectDate(DateTime)` - Switch to any date and load its nutrition data
+  - `resetToToday()` - Quick navigation back to current date
+  - `loadNutritionForDate(DateTime)` - Fetch date-specific entries from Supabase
+  - `selectedDateNutrition` - Getter for selected date's nutrition summary
+  - Enables weekly calendar interaction with data persistence
 
 **StreakProvider**
 - Tracks daily goal completion
 - Manages current and longest streaks
 - Handles grace period logic
 - Real-time updates via Supabase
+- **Historical Metrics Loading** (Added November 17, 2025 - v1.0.15):
+  - `loadMetricsForDate(DateTime)` - Load goal achievement data for any date
+  - Calculates `allGoalsAchieved` flag for calendar visual indicators
+  - **Critical Fix**: Ensures both `nutritionAchieved` and `allGoalsAchieved` are set
+  - Supports weekly calendar streak/missed day visualization
+  - 80-110% target range for goal achievement calculation
 
 **MarketplaceProvider** (Added November 16, 2025 - v1.0.14)
 - Manages product catalog and categories
@@ -170,13 +183,24 @@ Initialization Sequence:
 4. Attempt Supabase load (blocked if live data exists)
 ```
 
-#### Nutrition Data Flow (Updated October 22, 2025)
+#### Nutrition Data Flow (Updated November 17, 2025)
 ```
 User Input
     → NutritionProvider
     → SupabaseService.saveNutritionEntry()
     → Direct INSERT to Supabase (nutrition_entries table)
     → UI Updates
+
+Date Selection Flow (NEW - v1.0.15):
+User Taps Calendar Date
+    → NutritionProvider.selectDate(DateTime)
+    → loadNutritionForDate(DateTime)
+    → SupabaseService.getNutritionEntriesForDate()
+    → Filter by user_id and exact date
+    → Update _entries list with date-specific data
+    → notifyListeners() triggers UI rebuild
+    → Hero section updates with selected date nutrition
+    → Food entries list shows selected date items
 
 IMPORTANT: No sync to health_metrics table
 - nutrition_entries: Stores food/nutrition data (calories, protein, carbs, fat, fiber)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
+import 'package:intl/intl.dart';
 import '../../providers/nutrition_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/streak_provider.dart';
@@ -17,10 +18,16 @@ class NutritionHomeScreen extends StatefulWidget {
   State<NutritionHomeScreen> createState() => _NutritionHomeScreenState();
 }
 
-class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
+class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTickerProviderStateMixin {
+  DateTime _currentWeekStart = DateTime.now();
+
   @override
   void initState() {
     super.initState();
+    // Calculate the start of the current week (Sunday)
+    final today = DateTime.now();
+    final daysFromSunday = today.weekday % 7;
+    _currentWeekStart = today.subtract(Duration(days: daysFromSunday));
     _loadData();
   }
 
@@ -32,7 +39,62 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
       nutritionProvider.loadTodayNutrition(),
       streakProvider.loadTodayMetrics(),
       streakProvider.loadUserStreak(),
+      streakProvider.loadRecentMetrics(), // Load recent metrics for calendar indicators
     ]);
+  }
+
+  // Helper to check if two dates are the same day
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  // Navigate to previous week
+  Future<void> _navigateToPreviousWeek() async {
+    setState(() {
+      _currentWeekStart = _currentWeekStart.subtract(Duration(days: 7));
+    });
+  }
+
+  // Navigate to next week
+  Future<void> _navigateToNextWeek() async {
+    final today = DateTime.now();
+    final nextWeekStart = _currentWeekStart.add(Duration(days: 7));
+
+    // Don't allow navigating to future weeks
+    if (nextWeekStart.isBefore(today) || _isSameDay(nextWeekStart, today)) {
+      setState(() {
+        _currentWeekStart = nextWeekStart;
+      });
+    }
+  }
+
+  // Reset to current week
+  Future<void> _resetToToday() async {
+    final nutritionProvider = context.read<NutritionProvider>();
+    await nutritionProvider.resetToToday();
+
+    final today = DateTime.now();
+    final daysFromSunday = today.weekday % 7;
+    setState(() {
+      _currentWeekStart = today.subtract(Duration(days: daysFromSunday));
+    });
+  }
+
+  // Handle date tap
+  Future<void> _onDateTapped(DateTime date) async {
+    final today = DateTime.now();
+
+    // Don't allow selecting future dates
+    if (date.isAfter(today) && !_isSameDay(date, today)) {
+      return;
+    }
+
+    final nutritionProvider = context.read<NutritionProvider>();
+    final streakProvider = context.read<StreakProvider>();
+
+    // Show loading and select date
+    await nutritionProvider.selectDate(date);
+    await streakProvider.loadMetricsForDate(date);
   }
 
   @override
@@ -140,97 +202,256 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
   }
 
   Widget _buildWeeklyCalendar() {
-    return Consumer<StreakProvider>(
-      builder: (context, streakProvider, child) {
+    return Consumer2<StreakProvider, NutritionProvider>(
+      builder: (context, streakProvider, nutritionProvider, child) {
         final today = DateTime.now();
+        final selectedDate = nutritionProvider.selectedDate;
 
-        // Calculate days from Sunday to today
-        final daysFromSunday = today.weekday % 7; // Sunday = 0, Monday = 1, ..., Saturday = 6
-        final sunday = today.subtract(Duration(days: daysFromSunday));
-
+        // Generate week days from _currentWeekStart
         final weekDays = List.generate(7, (index) {
-          return sunday.add(Duration(days: index));
+          return _currentWeekStart.add(Duration(days: index));
         });
 
-        return Container(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: weekDays.map((date) {
-              final isToday = date.day == today.day &&
-                             date.month == today.month &&
-                             date.year == today.year;
+        // Check if we can navigate to next week
+        final canGoNext = weekDays.last.isBefore(today);
 
-              final hasStreak = streakProvider.recentMetrics.any((metric) =>
-                metric.date.day == date.day &&
-                metric.date.month == date.month &&
-                metric.date.year == date.year &&
-                metric.allGoalsAchieved
-              );
+        return Column(
+          children: [
+            // Navigation header with arrows
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Previous week button
+                  IconButton(
+                    icon: Icon(Icons.chevron_left, color: ThemeConfig.primaryColor),
+                    onPressed: _navigateToPreviousWeek,
+                    tooltip: 'Previous week',
+                  ),
 
-              return _buildCalendarDay(
-                date.weekday == 7 ? 'S' :  // Sunday
-                date.weekday == 1 ? 'M' :
-                date.weekday == 2 ? 'T' :
-                date.weekday == 3 ? 'W' :
-                date.weekday == 4 ? 'T' :
-                date.weekday == 5 ? 'F' : 'S',  // Saturday
-                date.day.toString(),
-                isToday: isToday,
-                hasStreak: hasStreak,
-              );
-            }).toList(),
-          ),
+                  // Month/Year display with tap to return to today
+                  GestureDetector(
+                    onTap: _resetToToday,
+                    child: Column(
+                      children: [
+                        Text(
+                          DateFormat('MMMM yyyy').format(_currentWeekStart),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                          ),
+                        ),
+                        if (!_isSameDay(selectedDate, today))
+                          Text(
+                            'Tap to return to today',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: ThemeConfig.textSecondary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // Next week button
+                  IconButton(
+                    icon: Icon(
+                      Icons.chevron_right,
+                      color: canGoNext ? ThemeConfig.primaryColor : Colors.grey.withOpacity(0.3),
+                    ),
+                    onPressed: canGoNext ? _navigateToNextWeek : null,
+                    tooltip: 'Next week',
+                  ),
+                ],
+              ),
+            ),
+
+            // Calendar days
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: weekDays.map((date) {
+                  final isToday = _isSameDay(date, today);
+                  final isSelected = _isSameDay(date, selectedDate);
+                  final isFuture = date.isAfter(today) && !isToday;
+
+                  // Check if this date has a streak
+                  final hasStreak = streakProvider.recentMetrics.any((metric) =>
+                    _isSameDay(metric.date, date) && metric.allGoalsAchieved
+                  );
+
+                  // Check if this date was missed (has data but goal not achieved)
+                  // Only mark as missed if it doesn't have a streak
+                  final wasMissed = !hasStreak && streakProvider.recentMetrics.any((metric) =>
+                    _isSameDay(metric.date, date) && !metric.allGoalsAchieved
+                  );
+
+                  // Get streak number for this date (consecutive days up to this point)
+                  int? streakNumber;
+                  if (hasStreak) {
+                    // Calculate consecutive days up to this date
+                    final metricsUpToDate = streakProvider.recentMetrics
+                        .where((m) => m.date.isBefore(date.add(Duration(days: 1))))
+                        .toList()
+                      ..sort((a, b) => b.date.compareTo(a.date));
+
+                    int consecutive = 0;
+                    DateTime? lastDate;
+                    for (final metric in metricsUpToDate) {
+                      if (metric.allGoalsAchieved) {
+                        if (lastDate == null || lastDate.difference(metric.date).inDays == 1) {
+                          consecutive++;
+                          lastDate = metric.date;
+                          if (_isSameDay(metric.date, date)) {
+                            streakNumber = consecutive;
+                            break;
+                          }
+                        } else {
+                          break;
+                        }
+                      }
+                    }
+                  }
+
+                  return _buildCalendarDay(
+                    date: date,
+                    isToday: isToday,
+                    isSelected: isSelected,
+                    isFuture: isFuture,
+                    hasStreak: hasStreak,
+                    wasMissed: wasMissed,
+                    streakNumber: streakNumber,
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildCalendarDay(String day, String date, {bool isToday = false, bool hasStreak = false}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          day,
-          style: TextStyle(
-            fontSize: 11,
-            color: isToday ? ThemeConfig.primaryColor : ThemeConfig.textSecondary,
-            fontWeight: isToday ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
-        SizedBox(height: 6),
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: isToday ? ThemeConfig.primaryColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: hasStreak && !isToday
-                ? Border.all(color: ThemeConfig.primaryColor, width: 1.5)
-                : null,
-          ),
-          child: Center(
-            child: Text(
-              date,
+  Widget _buildCalendarDay({
+    required DateTime date,
+    required bool isToday,
+    required bool isSelected,
+    required bool isFuture,
+    required bool hasStreak,
+    required bool wasMissed,
+    int? streakNumber,
+  }) {
+    // Day abbreviation
+    final dayAbbr = date.weekday == 7 ? 'S' :  // Sunday
+                    date.weekday == 1 ? 'M' :
+                    date.weekday == 2 ? 'T' :
+                    date.weekday == 3 ? 'W' :
+                    date.weekday == 4 ? 'T' :
+                    date.weekday == 5 ? 'F' : 'S';  // Saturday
+
+    return GestureDetector(
+      onTap: isFuture ? null : () => _onDateTapped(date),
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Day letter
+            Text(
+              dayAbbr,
               style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: isToday ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).textTheme.bodyLarge?.color,
+                fontSize: 11,
+                color: isFuture
+                    ? Colors.grey.withOpacity(0.3)
+                    : isToday
+                        ? ThemeConfig.primaryColor
+                        : ThemeConfig.textSecondary,
+                fontWeight: isToday ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
-          ),
-        ),
-        if (hasStreak && !isToday)
-          Container(
-            margin: EdgeInsets.only(top: 3),
-            width: 3,
-            height: 3,
-            decoration: BoxDecoration(
-              color: ThemeConfig.primaryColor,
-              shape: BoxShape.circle,
+            SizedBox(height: 6),
+
+            // Date container
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? ThemeConfig.primaryColor
+                    : isToday && !isSelected
+                        ? Colors.transparent
+                        : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                border: isToday && !isSelected
+                    ? Border.all(color: ThemeConfig.primaryColor, width: 2)
+                    : hasStreak && !isSelected
+                        ? Border.all(color: ThemeConfig.primaryColor.withOpacity(0.5), width: 1.5)
+                        : null,
+              ),
+              child: Stack(
+                children: [
+                  // Date number with fire emoji for streaks or strikethrough for missed
+                  Center(
+                    child: wasMissed && !isSelected
+                        ? Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Text(
+                                date.day.toString(),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isFuture
+                                      ? Colors.grey.withOpacity(0.3)
+                                      : Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.5),
+                                ),
+                              ),
+                              // Cross/strikethrough for missed days
+                              Transform.rotate(
+                                angle: -0.5,
+                                child: Container(
+                                  width: 25,
+                                  height: 1.5,
+                                  color: Colors.red.withOpacity(0.7),
+                                ),
+                              ),
+                            ],
+                          )
+                        : RichText(
+                            text: TextSpan(
+                              children: [
+                                // Fire emoji for streak days
+                                if (hasStreak && !isSelected)
+                                  TextSpan(
+                                    text: '🔥',
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                // Date number
+                                TextSpan(
+                                  text: date.day.toString(),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: isFuture
+                                        ? Colors.grey.withOpacity(0.3)
+                                        : isSelected
+                                            ? Colors.white
+                                            : Theme.of(context).textTheme.bodyLarge?.color,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                ],
+              ),
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -240,7 +461,9 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> {
         final isDarkMode = Theme.of(context).brightness == Brightness.dark;
         final profile = userProvider.profile;
         final caloriesTarget = profile?.dailyCaloriesTarget ?? 2000;
-        final caloriesConsumed = nutritionProvider.todayNutrition.totalCalories;
+
+        // Use selected date nutrition instead of always using today
+        final caloriesConsumed = nutritionProvider.selectedDateNutrition.totalCalories;
         final caloriesLeft = caloriesTarget - caloriesConsumed;
         final progress = (caloriesConsumed / caloriesTarget).clamp(0.0, 1.0);
         final currentStreak = streakProvider.currentStreak;
