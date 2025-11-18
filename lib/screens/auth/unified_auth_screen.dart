@@ -64,7 +64,7 @@ class _UnifiedAuthScreenState extends State<UnifiedAuthScreen> {
       ToastService().showSuccess('Verification code sent to your email!');
 
       // Navigate to OTP verification screen
-      Navigator.of(context).push(
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (context) => OTPVerificationScreen(
             email: email,
@@ -99,10 +99,11 @@ class _UnifiedAuthScreenState extends State<UnifiedAuthScreen> {
 
       // Check if new or existing user
       if (userProvider.hasProfile && userProvider.hasCompletedOnboarding) {
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (context) => const MainScreen(),
           ),
+          (route) => false, // Remove all previous routes
         );
       } else {
         Navigator.of(context).pushReplacement(

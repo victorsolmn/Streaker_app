@@ -274,7 +274,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     return await showDialog<String>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true, // P0 Fix #3: Allow users to tap outside to cancel
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => Dialog(
           backgroundColor: Colors.transparent,
@@ -651,13 +651,26 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
-      floatingActionButton: FloatingActionButton(
+    return WillPopScope(
+      onWillPop: () async {
+        // Prevent back navigation when on home tab
+        if (_currentIndex == 0) {
+          // Show exit confirmation dialog
+          final shouldExit = await _showExitConfirmation();
+          return shouldExit ?? false;
+        } else {
+          // If on other tabs, go back to home tab
+          setState(() => _currentIndex = 0);
+          return false;
+        }
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: IndexedStack(
+          index: _currentIndex,
+          children: _screens,
+        ),
+        floatingActionButton: FloatingActionButton(
         onPressed: _isScanning ? null : _scanFood,
         backgroundColor: _isScanning ? AppTheme.borderColor : AppTheme.primaryAccent,
         child: _isScanning
@@ -692,6 +705,42 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             ],
           ),
         ),
+      ),
+      ),
+    );
+  }
+
+  Future<bool?> _showExitConfirmation() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDarkMode ? AppTheme.darkCardBackground : AppTheme.cardBackgroundLight,
+        title: Text(
+          'Exit Streaker?',
+          style: TextStyle(
+            color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
+          ),
+        ),
+        content: Text(
+          'Do you want to exit the app?',
+          style: TextStyle(
+            color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.errorRed,
+            ),
+            child: Text('Exit'),
+          ),
+        ],
       ),
     );
   }

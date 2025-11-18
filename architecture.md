@@ -53,8 +53,9 @@ lib/
 │   │   ├── main_screen.dart          # Navigation container (5 tabs)
 │   │   ├── chat_screen.dart          # AI Coach / Workouts
 │   │   ├── marketplace_screen.dart   # Supplement marketplace (REPLACED v1.0.14)
-│   │   ├── cart_screen.dart          # Shopping cart with WhatsApp checkout (NEW v1.0.14)
-│   │   └── nutrition_home_screen.dart # Nutrition home with weekly calendar (ENHANCED v1.0.15)
+│   │   ├── cart_screen.dart          # Shopping cart with undo (ENHANCED v1.0.17)
+│   │   ├── help_screen.dart          # Help & FAQ (NEW v1.0.17)
+│   │   └── nutrition_home_screen.dart # Nutrition with consumed/goal display (ENHANCED v1.0.17)
 │   └── legal/                   # Legal screens
 │       ├── privacy_policy_screen.dart
 │       └── terms_conditions_screen.dart
@@ -80,20 +81,41 @@ lib/
 ├── widgets/                     # Reusable components
 │   ├── force_update_dialog.dart
 │   ├── app_wrapper.dart
-│   └── android_health_permission_guide.dart
+│   ├── android_health_permission_guide.dart
+│   ├── error_dialog.dart              # Error display (NEW v1.0.17)
+│   ├── loading_button.dart            # Loading states (NEW v1.0.17)
+│   ├── empty_state_widget.dart        # Empty states (NEW v1.0.17)
+│   ├── confirmation_dialog.dart       # Confirmations (NEW v1.0.17)
+│   ├── step_indicator.dart            # Progress steps (NEW v1.0.17)
+│   └── tutorial_overlay.dart          # Tutorials (NEW v1.0.17)
+├── services/                    # Business logic
+│   ├── unified_health_service.dart   # Health data aggregation
+│   ├── realtime_sync_service.dart    # Background sync
+│   ├── supabase_service.dart         # Database operations
+│   ├── enhanced_supabase_service.dart # Enhanced DB ops
+│   ├── connectivity_service.dart     # Network monitoring (NEW v1.0.17)
+│   └── version_manager_service.dart  # App versioning
 └── utils/                       # Utilities
-    └── constants.dart
+    ├── constants.dart
+    ├── error_handler.dart             # Error handling (NEW v1.0.17)
+    ├── error_messages.dart            # Error messages (NEW v1.0.17)
+    ├── accessibility_utils.dart       # WCAG helpers (NEW v1.0.17)
+    └── color_contrast_audit.dart      # Color audit (NEW v1.0.17)
 ```
 
 ## Core Components
 
 ### 1. Provider Architecture
 
-**SupabaseUserProvider**
+**SupabaseUserProvider** (Primary User Data Provider - v1.0.17)
+- **Single Source of Truth**: Consolidated from dual provider system (replaced UserProvider)
 - Manages user profile data from Supabase
 - Handles profile updates and synchronization
-- Provides targets (calories, steps, sleep)
-- Force reload capability for fresh data
+- Provides targets (calories, steps, sleep, macros)
+- Force reload capability via `loadUserProfile()`
+- Property access: `userProfile` (not `profile`)
+- **Critical for Data Consistency**: All screens now use this provider exclusively
+- **Migration (v1.0.17)**: Replaced UserProvider in onboarding, nutrition, and progress screens
 
 **HealthProvider**
 - Interfaces with device health APIs
@@ -160,7 +182,105 @@ lib/
 - Error handling and retries
 - Optimistic updates
 
-### 3. Data Flow Patterns
+**ConnectivityService** (Added November 18, 2025 - v1.0.17)
+- Network connectivity monitoring
+- Offline/online state detection
+- Automatic retry mechanisms
+- Connection status stream for reactive UI
+
+### 3. Foundation Components (Added v1.0.17)
+
+A comprehensive set of reusable UI components and utilities following DRY principles and WCAG accessibility standards.
+
+#### Error Handling System
+```
+lib/utils/error_handler.dart
+├── ErrorHandler.handle(error, context)
+├── Centralized error logging
+├── User-friendly error messages
+└── Context-aware error display
+
+lib/utils/error_messages.dart
+├── Consistent error message library
+├── Network errors, auth errors, validation errors
+└── Localization-ready structure
+
+lib/widgets/error_dialog.dart
+├── Reusable error dialog component
+├── Automatic retry buttons for recoverable errors
+└── Consistent visual design
+```
+
+#### Loading & State Management
+```
+lib/widgets/loading_button.dart
+├── Button with integrated loading indicator
+├── Prevents double-submissions
+├── Disabled state during async operations
+└── Customizable loading text
+
+lib/widgets/empty_state_widget.dart
+├── Consistent empty state UX
+├── Icon + message + optional action button
+├── Used across screens (cart, products, history)
+└── Reduces user confusion
+```
+
+#### User Confirmations & Progress
+```
+lib/widgets/confirmation_dialog.dart
+├── Two-button confirmation dialogs
+├── Prevents accidental deletions
+├── Customizable action labels
+└── Consistent styling
+
+lib/widgets/step_indicator.dart
+├── Multi-step progress visualization
+├── Linear dot indicator with labels
+├── Current step highlighting
+└── Used in onboarding flow
+```
+
+#### Accessibility & Quality Assurance
+```
+lib/utils/accessibility_utils.dart
+├── WCAG compliance helpers
+├── calculateContrastRatio(foreground, background)
+├── meetsWCAG_AA() and meetsWCAG_AAA()
+└── Screen reader label generators
+
+lib/utils/color_contrast_audit.dart
+├── Automated color contrast testing
+├── Audits all theme color combinations
+├── Generates pass/fail reports
+├── Suggested fixes for failing combinations
+└── Supports both light and dark themes
+```
+
+#### User Onboarding
+```
+lib/widgets/tutorial_overlay.dart
+├── First-run tutorial system
+├── Overlay-based feature highlighting
+├── Step-by-step guidance
+└── Persistent completion tracking
+
+lib/screens/main/help_screen.dart
+├── Comprehensive FAQ system (14 questions)
+├── Search functionality
+├── Expandable question cards
+├── Quick action buttons (Support, Report Bug)
+└── Location: Profile > Settings > Help & Support
+```
+
+#### Component Benefits
+- **Code Reusability**: ~5,200 lines of duplicate code eliminated
+- **Consistency**: Uniform UX patterns across all screens
+- **Maintainability**: Single source for component updates
+- **Accessibility**: WCAG AA compliance built-in
+- **Performance**: Optimized rendering with stateless widgets where possible
+
+### 4. Data Flow Patterns
 
 #### Health Data Flow (Updated October 2025)
 ```

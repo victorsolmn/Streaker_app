@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import 'package:intl/intl.dart';
 import '../../providers/nutrition_provider.dart';
-import '../../providers/user_provider.dart';
+import '../../providers/supabase_user_provider.dart';
 import '../../providers/streak_provider.dart';
 import '../../config/theme_config.dart';
 import '../../utils/app_theme.dart';
@@ -456,10 +456,10 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
   }
 
   Widget _buildHeroSection() {
-    return Consumer3<NutritionProvider, UserProvider, StreakProvider>(
+    return Consumer3<NutritionProvider, SupabaseUserProvider, StreakProvider>(
       builder: (context, nutritionProvider, userProvider, streakProvider, child) {
         final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-        final profile = userProvider.profile;
+        final profile = userProvider.userProfile;
         final caloriesTarget = profile?.dailyCaloriesTarget ?? 2000;
 
         // Use selected date nutrition instead of always using today
@@ -517,15 +517,15 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
                              color: ThemeConfig.primaryColor, size: 26),
                         SizedBox(height: 4),
                         Text(
-                          caloriesLeft > 0 ? caloriesLeft.toInt().toString() : '0',
+                          '${caloriesConsumed.toInt()} / ${caloriesTarget.toInt()}',
                           style: TextStyle(
-                            fontSize: 22,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
                           ),
                         ),
                         Text(
-                          'KCAL LEFT',
+                          'KCAL',
                           style: TextStyle(
                             fontSize: 10,
                             color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
@@ -591,7 +591,7 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
   }
 
   Widget _buildMacroBreakdown() {
-    return Consumer2<NutritionProvider, UserProvider>(
+    return Consumer2<NutritionProvider, SupabaseUserProvider>(
       builder: (context, nutritionProvider, userProvider, child) {
         final nutrition = nutritionProvider.todayNutrition;
         final proteinGoal = nutritionProvider.proteinGoal;
@@ -681,12 +681,12 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
             ),
           ),
           SizedBox(height: 4),
-          // Value with "left" inline
+          // Value with consumed/goal format
           RichText(
             text: TextSpan(
               children: [
                 TextSpan(
-                  text: '${left.toInt()}g',
+                  text: '${consumed.toInt()}',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -694,7 +694,7 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
                   ),
                 ),
                 TextSpan(
-                  text: ' left',
+                  text: ' / ${goal.toInt()}g',
                   style: TextStyle(
                     fontSize: 13,
                     color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,

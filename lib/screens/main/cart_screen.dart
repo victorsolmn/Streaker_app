@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/marketplace_provider.dart';
@@ -5,8 +6,93 @@ import '../../models/product_model.dart';
 import '../../utils/app_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class CartScreen extends StatelessWidget {
+class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
+
+  @override
+  State<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  // Undo state
+  CartItem? _lastRemovedItem;
+  Timer? _undoTimer;
+  final int _undoTimeoutSeconds = 5;
+
+  @override
+  void dispose() {
+    _undoTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleRemoveItem(CartItem item) {
+    final provider = Provider.of<MarketplaceProvider>(context, listen: false);
+
+    // Cancel any existing undo timer
+    _undoTimer?.cancel();
+
+    // Store the removed item
+    setState(() {
+      _lastRemovedItem = item;
+    });
+
+    // Remove the item from cart
+    provider.removeFromCart(item.id);
+
+    // Show undo snackbar
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${item.product?.name ?? 'Item'} removed from cart'),
+        duration: Duration(seconds: _undoTimeoutSeconds),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'UNDO',
+          textColor: AppTheme.primaryAccent,
+          onPressed: () {
+            _undoRemoval();
+          },
+        ),
+      ),
+    );
+
+    // Start timer to clear undo data after timeout
+    _undoTimer = Timer(Duration(seconds: _undoTimeoutSeconds), () {
+      setState(() {
+        _lastRemovedItem = null;
+      });
+    });
+  }
+
+  void _undoRemoval() {
+    if (_lastRemovedItem == null) return;
+
+    // Cancel the undo timer
+    _undoTimer?.cancel();
+
+    final provider = Provider.of<MarketplaceProvider>(context, listen: false);
+
+    // Re-add the item to cart
+    provider.addToCart(
+      _lastRemovedItem!.productId,
+      quantity: _lastRemovedItem!.quantity,
+    );
+
+    // Clear the undo state
+    setState(() {
+      _lastRemovedItem = null;
+    });
+
+    // Show confirmation
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${_lastRemovedItem!.product?.name ?? 'Item'} restored to cart'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppTheme.successGreen,
+      ),
+    );
+  }
 
   Future<void> _sendWhatsAppOrder(BuildContext context, List<CartItem> cartItems, double total) async {
     final provider = Provider.of<MarketplaceProvider>(context, listen: false);
@@ -143,161 +229,212 @@ class CartScreen extends StatelessWidget {
     final product = cartItem.product!;
     final price = isPremium ? product.premiumPrice : product.regularPrice;
     final itemTotal = price * cartItem.quantity;
+    const int maxQuantity = 10; // P0 Fix #4: Max quantity limit
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDarkMode ? AppTheme.darkCardBackground : AppTheme.cardBackgroundLight,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+    return Dismissible(
+      key: Key(cartItem.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (direction) {
+        _handleRemoveItem(cartItem);
+      },
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: AppTheme.errorRed,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(
+          Icons.delete_outline,
+          color: Colors.white,
+          size: 28,
+        ),
       ),
-      child: Row(
-        children: [
-          // Product Image
-          Container(
-            width: 70,
-            height: 70,
-            decoration: BoxDecoration(
-              color: AppTheme.cardBackgroundLight,
-              borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDarkMode ? AppTheme.darkCardBackground : AppTheme.cardBackgroundLight,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-            child: Center(
-              child: Icon(
-                Icons.fitness_center,
-                size: 30,
-                color: AppTheme.primaryAccent.withOpacity(0.5),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Product Image
+            Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                color: AppTheme.cardBackgroundLight,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.fitness_center,
+                  size: 30,
+                  color: AppTheme.primaryAccent.withOpacity(0.5),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
+            const SizedBox(width: 12),
 
-          // Product Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Product Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          product.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // Remove button
+                      IconButton(
+                        onPressed: () => _handleRemoveItem(cartItem),
+                        icon: const Icon(Icons.delete_outline),
+                        color: AppTheme.errorRed,
+                        iconSize: 20,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    product.brand,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '₹${price.toStringAsFixed(0)} each',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryAccent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // Quantity Controls
+            Column(
               children: [
+                // Quantity Selector
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppTheme.primaryAccent.withOpacity(0.3),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Decrease button
+                      GestureDetector(
+                        onTap: cartItem.quantity > 1 ? () {
+                          final provider = Provider.of<MarketplaceProvider>(
+                            context,
+                            listen: false,
+                          );
+                          provider.updateCartQuantity(
+                            cartItem.id,
+                            cartItem.quantity - 1,
+                          );
+                        } : null,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          child: Icon(
+                            Icons.remove,
+                            size: 16,
+                            color: cartItem.quantity > 1
+                              ? (isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary)
+                              : AppTheme.textSecondary.withOpacity(0.5),
+                          ),
+                        ),
+                      ),
+                      // Quantity
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '${cartItem.quantity}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
+                          ),
+                        ),
+                      ),
+                      // Increase button - P0 Fix #4: Enforce max quantity
+                      GestureDetector(
+                        onTap: cartItem.quantity < maxQuantity ? () {
+                          final provider = Provider.of<MarketplaceProvider>(
+                            context,
+                            listen: false,
+                          );
+                          provider.updateCartQuantity(
+                            cartItem.id,
+                            cartItem.quantity + 1,
+                          );
+                        } : () {
+                          // Show snackbar when limit reached
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Maximum quantity is $maxQuantity'),
+                              duration: const Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          child: Icon(
+                            Icons.add,
+                            size: 16,
+                            color: cartItem.quantity < maxQuantity
+                              ? AppTheme.primaryAccent
+                              : AppTheme.textSecondary.withOpacity(0.5),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Item Total
                 Text(
-                  product.name,
+                  '₹${itemTotal.toStringAsFixed(0)}',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  product.brand,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '₹${price.toStringAsFixed(0)} each',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryAccent,
-                  ),
                 ),
               ],
             ),
-          ),
-
-          // Quantity Controls
-          Column(
-            children: [
-              // Quantity Selector
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: AppTheme.primaryAccent.withOpacity(0.3),
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Decrease button
-                    GestureDetector(
-                      onTap: () {
-                        final provider = Provider.of<MarketplaceProvider>(
-                          context,
-                          listen: false,
-                        );
-                        provider.updateCartQuantity(
-                          cartItem.id,
-                          cartItem.quantity - 1,
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(
-                          Icons.remove,
-                          size: 16,
-                          color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                        ),
-                      ),
-                    ),
-                    // Quantity
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        '${cartItem.quantity}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                        ),
-                      ),
-                    ),
-                    // Increase button
-                    GestureDetector(
-                      onTap: () {
-                        final provider = Provider.of<MarketplaceProvider>(
-                          context,
-                          listen: false,
-                        );
-                        provider.updateCartQuantity(
-                          cartItem.id,
-                          cartItem.quantity + 1,
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        child: const Icon(
-                          Icons.add,
-                          size: 16,
-                          color: AppTheme.primaryAccent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              // Item Total
-              Text(
-                '₹${itemTotal.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

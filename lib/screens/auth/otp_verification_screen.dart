@@ -122,13 +122,14 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       } else {
         // Existing users - check if they have completed profile
         await userProvider.reloadUserData();
-        
+
         if (userProvider.hasProfile && userProvider.hasCompletedOnboarding) {
-          // Existing user with complete profile → Main Screen
-          Navigator.of(context).pushReplacement(
+          // Existing user with complete profile → Main Screen (clear all previous routes)
+          Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (context) => const MainScreen(),
             ),
+            (route) => false, // Remove all previous routes
           );
         } else {
           // Existing user but incomplete profile → Onboarding

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../providers/user_provider.dart';
+import '../../providers/supabase_user_provider.dart';
 import '../../providers/nutrition_provider.dart';
 import '../../providers/achievement_provider.dart';
 import '../../providers/streak_provider.dart';
@@ -77,7 +77,7 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
       ),
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: Consumer3<UserProvider, NutritionProvider, StreakProvider>(
+        child: Consumer3<SupabaseUserProvider, NutritionProvider, StreakProvider>(
           builder: (context, userProvider, nutritionProvider, streakProvider, child) {
             return TabBarView(
               controller: _tabController,
@@ -92,7 +92,7 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
     );
   }
 
-  Widget _buildProgressTab(UserProvider userProvider, NutritionProvider nutritionProvider, StreakProvider streakProvider) {
+  Widget _buildProgressTab(SupabaseUserProvider userProvider, NutritionProvider nutritionProvider, StreakProvider streakProvider) {
     return RefreshIndicator(
       onRefresh: () async {
         // Refresh nutrition and streak data only
@@ -154,7 +154,7 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
     );
   }
 
-  Widget _buildAchievementsTab(UserProvider userProvider, NutritionProvider nutritionProvider, StreakProvider streakProvider) {
+  Widget _buildAchievementsTab(SupabaseUserProvider userProvider, NutritionProvider nutritionProvider, StreakProvider streakProvider) {
     // Check achievements when tab is viewed
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AchievementChecker.checkAllAchievements(context);

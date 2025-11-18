@@ -7,9 +7,10 @@ import '../../models/supabase_enums.dart';
 import '../../models/profile_model.dart';
 import '../../utils/app_theme.dart';
 import '../../providers/supabase_auth_provider.dart';
-import '../../providers/user_provider.dart';
+import '../../providers/supabase_user_provider.dart';
 import '../main/main_screen.dart';
 import '../auth/welcome_screen.dart';
+import '../../widgets/step_indicator.dart';
 
 class SupabaseOnboardingScreen extends StatefulWidget {
   const SupabaseOnboardingScreen({Key? key}) : super(key: key);
@@ -102,8 +103,9 @@ class _SupabaseOnboardingScreenState extends State<SupabaseOnboardingScreen>
       if (profile.hasCompletedOnboarding) {
         print('✅ User already completed onboarding, redirecting to main');
         if (mounted) {
-          Navigator.of(context).pushReplacement(
+          Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const MainScreen()),
+            (route) => false, // Remove all previous routes
           );
         }
       }
@@ -268,20 +270,32 @@ class _SupabaseOnboardingScreenState extends State<SupabaseOnboardingScreen>
   Future<void> _completeOnboarding() async {
     setState(() => _isProcessing = true);
 
-    final success = await _onboardingService.completeOnboarding();
+    // Pass calculated daily targets to the service
+    final caloriesTarget = _dailyTargets['calories'];
+    final stepsTarget = _dailyTargets['steps'];
+
+    print('📊 Passing calculated targets to service:');
+    print('   - Calories: $caloriesTarget kcal');
+    print('   - Steps: $stepsTarget steps');
+
+    final success = await _onboardingService.completeOnboarding(
+      dailyCaloriesTarget: caloriesTarget,
+      dailyStepsTarget: stepsTarget,
+    );
 
     if (success) {
       print('✅ Onboarding completed successfully!');
 
-      // Reload user data
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-      await userProvider.reloadUserData();
+      // Reload user data from Supabase
+      final userProvider = Provider.of<SupabaseUserProvider>(context, listen: false);
+      await userProvider.loadUserProfile();
 
       if (mounted) {
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => const MainScreen(),
           ),
+          (route) => false, // Remove all previous routes
         );
       }
     } else {
@@ -352,17 +366,30 @@ class _SupabaseOnboardingScreenState extends State<SupabaseOnboardingScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Step ${_currentStep + 1} of $_totalSteps',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
               IconButton(
                 onPressed: _currentStep > 0 ? _previousStep : _backToGetStarted,
                 icon: const Icon(Icons.arrow_back),
               ),
+              const Spacer(),
             ],
           ),
           const SizedBox(height: 8),
+
+          // Visual step indicator with dots
+          StepIndicator(
+            currentStep: _currentStep,
+            totalSteps: _totalSteps,
+            stepLabels: const [
+              'Personal Info',
+              'Fitness Goal',
+              'Activity',
+              'Summary',
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Linear progress bar
           AnimatedBuilder(
             animation: _progressAnimation,
             builder: (context, child) {

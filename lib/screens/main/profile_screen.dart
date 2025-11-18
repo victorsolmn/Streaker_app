@@ -18,6 +18,7 @@ import '../../utils/app_theme.dart';
 import '../auth/welcome_screen.dart';
 import 'edit_goals_screen.dart';
 import 'edit_profile_screen.dart';
+import 'help_screen.dart';
 import 'main_screen.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/fitness_goals_card.dart';
@@ -975,17 +976,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showHelpDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Help & Support'),
-        content: Text('For support, please contact us at support@streaker.app\n\nWe\'re here to help you achieve your fitness goals!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('OK'),
-          ),
-        ],
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const HelpScreen(),
       ),
     );
   }

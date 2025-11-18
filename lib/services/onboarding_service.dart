@@ -161,7 +161,10 @@ class OnboardingService {
   }
 
   /// Complete onboarding and calculate targets
-  Future<bool> completeOnboarding() async {
+  Future<bool> completeOnboarding({
+    int? dailyCaloriesTarget,
+    int? dailyStepsTarget,
+  }) async {
     try {
       final user = currentUser;
       if (user == null) {
@@ -192,10 +195,14 @@ class OnboardingService {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
+      // Use calculated calorie target from onboarding screen, or fall back to default
+      final calorieTarget = dailyCaloriesTarget ?? 2000;
+      updateData['daily_calories_target'] = calorieTarget;
+      updateData['calorie_goal'] = calorieTarget;
+
+      print('📊 Setting calorie targets to: $calorieTarget kcal');
+
       // Add default nutrition goals if not set
-      if (profile.calorieGoal == null) {
-        updateData['calorie_goal'] = 2000;
-      }
       if (profile.proteinGoal == null) {
         updateData['protein_goal'] = 150;
       }
@@ -212,6 +219,7 @@ class OnboardingService {
           .eq('id', user.id);
 
       print('✅ OnboardingService: Onboarding completed successfully!');
+      print('✅ Calorie target saved: $calorieTarget kcal');
       return true;
     } catch (e) {
       print('❌ OnboardingService: Error completing onboarding: $e');
