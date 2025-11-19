@@ -267,20 +267,22 @@ class SupabaseService {
   }) async {
     try {
       final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-      final endOfDay = startOfDay.add(Duration(days: 1));
+      final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
+      debugPrint('📅 Fetching nutrition entries for today: $dateStr');
 
       final response = await _supabase
           .from('nutrition_entries')
           .select()
           .eq('user_id', userId)
-          .gte('created_at', startOfDay.toIso8601String())
-          .lt('created_at', endOfDay.toIso8601String())
+          .eq('date', dateStr)
           .order('created_at', ascending: false);
+
+      debugPrint('✅ Found ${(response as List).length} entries for today');
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      debugPrint('Error loading today\'s nutrition: $e');
+      debugPrint('❌ Error loading today\'s nutrition: $e');
       return [];
     }
   }

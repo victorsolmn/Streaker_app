@@ -88,7 +88,7 @@ class _UnifiedAuthScreenState extends State<UnifiedAuthScreen> {
     final authProvider = Provider.of<SupabaseAuthProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
-    ToastService().showLoading('Signing in with Google...');
+    ToastService().showLoading('Opening Google Sign In...');
 
     final success = await authProvider.signInWithGoogle();
 

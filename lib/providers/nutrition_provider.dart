@@ -462,7 +462,7 @@ class NutritionProvider with ChangeNotifier {
       final userId = _supabaseService.currentUser?.id;
       if (userId != null && _isOnline) {
         debugPrint('NutritionProvider: Auto-syncing after adding entry');
-        await _syncToSupabase();
+        await _syncToSupabase(forceSync: true); // Force immediate sync for user-added entries
 
         // NEW: Trigger database-level sync to update health_metrics and streaks
         await _triggerDatabaseSync();
@@ -477,43 +477,43 @@ class NutritionProvider with ChangeNotifier {
   }
 
   /// Trigger database-level sync to aggregate nutrition and update goals/streaks
-  /// UPDATED: Now uses new nutrition-based sync function
+  /// Uses update_nutrition_streak function to calculate and update streaks
   Future<void> _triggerDatabaseSync() async {
     try {
       final userId = _supabaseService.currentUser?.id;
       if (userId == null) return;
 
-      // Call the new sync_nutrition_and_streaks database function
-      final response = await _supabaseService.client
-          .rpc('sync_nutrition_and_streaks', params: {
+      // Call update_nutrition_streak to recalculate streaks based on nutrition data
+      await _supabaseService.client
+          .rpc('update_nutrition_streak', params: {
         'p_user_id': userId,
         'p_date': DateTime.now().toIso8601String().split('T')[0], // Today's date in YYYY-MM-DD
       });
 
-      if (response != null) {
-        debugPrint('✅ NutritionProvider: Nutrition sync completed');
-        debugPrint('   Total calories: ${response['summary']?['total_calories']}');
-        debugPrint('   Goal achieved: ${response['summary']?['goal_achieved']}');
-        debugPrint('   Current streak: ${response['streak']?['current_streak']}');
-      }
+      debugPrint('✅ NutritionProvider: Nutrition streak updated successfully');
     } catch (e) {
-      debugPrint('⚠️ NutritionProvider: Database sync failed (non-critical): $e');
+      debugPrint('⚠️ NutritionProvider: Streak update failed (non-critical): $e');
       // Non-critical error - database triggers will handle it automatically
       // This is just for immediate feedback
     }
   }
 
-  Future<void> _syncToSupabase() async {
+  Future<void> _syncToSupabase({bool forceSync = false}) async {
     final userId = _supabaseService.currentUser?.id;
     if (userId == null || _isSyncing) return;
 
-    // Throttle syncing - don't sync more than once per minute
-    if (_lastSyncTime != null) {
+    // Throttle syncing - don't sync more than once per minute (unless forced)
+    if (!forceSync && _lastSyncTime != null) {
       final timeSinceLastSync = DateTime.now().difference(_lastSyncTime!);
       if (timeSinceLastSync.inSeconds < 60) {
         debugPrint('NutritionProvider: Skipping sync, last sync was ${timeSinceLastSync.inSeconds} seconds ago');
         return;
       }
+    }
+
+    // If forceSync is true, log that we're bypassing throttle
+    if (forceSync) {
+      debugPrint('🚀 NutritionProvider: Force sync enabled - bypassing throttle');
     }
 
     _isSyncing = true;
@@ -548,15 +548,21 @@ class NutritionProvider with ChangeNotifier {
       // Group local entries by date
       final Map<String, List<NutritionEntry>> entriesByDate = {};
 
+      debugPrint('📋 Grouping ${_entries.length} local entries by date');
       for (final entry in _entries) {
         final dateStr = '${entry.timestamp.year}-${entry.timestamp.month.toString().padLeft(2, '0')}-${entry.timestamp.day.toString().padLeft(2, '0')}';
         entriesByDate[dateStr] ??= [];
         entriesByDate[dateStr]!.add(entry);
+        debugPrint('  Entry: ${entry.foodName} -> date: $dateStr');
       }
+
+      debugPrint('📅 Today string: $todayStr');
+      debugPrint('📅 Dates in entriesByDate: ${entriesByDate.keys.toList()}');
 
       // Only sync today's entries to avoid re-syncing old data
       if (entriesByDate.containsKey(todayStr)) {
         final todayEntries = entriesByDate[todayStr]!;
+        debugPrint('✅ Found ${todayEntries.length} entries for today, will attempt to sync');
 
         // Only save entries that haven't been synced yet
         for (final entry in todayEntries) {
@@ -588,6 +594,8 @@ class NutritionProvider with ChangeNotifier {
             debugPrint('Skipping duplicate entry: ${entry.foodName}');
           }
         }
+      } else {
+        debugPrint('⚠️ No entries found for today ($todayStr) in local data');
       }
 
       _lastSyncTime = DateTime.now();

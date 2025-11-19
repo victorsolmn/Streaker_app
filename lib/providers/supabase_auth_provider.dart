@@ -291,9 +291,9 @@ class SupabaseAuthProvider with ChangeNotifier {
         }
       });
 
-      // Wait for up to 10 seconds for the callback
+      // Wait for up to 60 seconds for the callback (increased for reliable SSO)
       int attempts = 0;
-      while (!authCompleted && attempts < 20) { // 10 seconds total
+      while (!authCompleted && attempts < 120) { // 60 seconds total
         await Future.delayed(Duration(milliseconds: 500));
         attempts++;
 
@@ -308,8 +308,8 @@ class SupabaseAuthProvider with ChangeNotifier {
           break;
         }
 
-        if (kDebugMode && attempts % 4 == 0) {
-          print('⏳ Still waiting for callback... (${attempts * 500}ms)');
+        if (kDebugMode && attempts % 10 == 0) {
+          print('⏳ Still waiting for Google login... (${attempts * 500}ms / 60000ms)');
         }
       }
 
@@ -329,7 +329,7 @@ class SupabaseAuthProvider with ChangeNotifier {
         return true;
       } else {
         if (kDebugMode) {
-          print('⚠️ OAuth callback timeout - no user session found after 10 seconds');
+          print('⚠️ OAuth callback timeout - no user session found after 60 seconds');
           print('🔍 Final auth check: ${_supabaseService.currentUser?.email ?? "None"}');
         }
       }
