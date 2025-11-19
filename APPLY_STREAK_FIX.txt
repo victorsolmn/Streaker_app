@@ -1,0 +1,88 @@
+═══════════════════════════════════════════════════════════════
+             STREAK TRIGGER FIX - QUICK GUIDE
+═══════════════════════════════════════════════════════════════
+
+CURRENT STATUS:
+✅ Temporary fix applied - Your app now shows "Streak: 3"
+📝 Permanent fix ready - Needs to be applied in Supabase
+
+═══════════════════════════════════════════════════════════════
+             HOW TO APPLY PERMANENT FIX
+═══════════════════════════════════════════════════════════════
+
+STEP 1: Go to Supabase Dashboard
+   → https://supabase.com/dashboard
+   → Select your project: xzwvckziavhzmghizyqx
+
+STEP 2: Open SQL Editor
+   → Click "SQL Editor" in left sidebar
+   → Click "New query"
+
+STEP 3: Copy the migration file
+   → Open: supabase/migrations/010_fix_streak_trigger_logic.sql
+   → Copy ALL contents (Cmd+A, Cmd+C)
+
+STEP 4: Paste and Run
+   → Paste into SQL Editor (Cmd+V)
+   → Click "Run" button (or Cmd+Enter)
+
+STEP 5: Verify Success
+   → You should see output messages ending with:
+     "✅ Migration 010 completed successfully"
+   → Check final streak status in the output
+
+═══════════════════════════════════════════════════════════════
+             WHAT THE FIX DOES
+═══════════════════════════════════════════════════════════════
+
+BEFORE FIX:
+• Trigger only fired when goal_achieved value CHANGED
+• Consecutive successful days didn't update streak
+• Result: Streak stuck at 1 despite multiple successful days
+
+AFTER FIX:
+• Trigger fires on EVERY update to daily_nutrition_summary
+• Consecutive successful days properly increment streak
+• Future nutrition entries automatically update streaks
+
+═══════════════════════════════════════════════════════════════
+             TESTING THE FIX
+═══════════════════════════════════════════════════════════════
+
+After applying the fix:
+
+1. Restart your app (force close and reopen)
+2. Check hero section shows "Streak: 3" ✅
+3. Tomorrow (Nov 19): Add nutrition and meet your goal
+4. Verify streak automatically increments to 4
+
+═══════════════════════════════════════════════════════════════
+             FILES CREATED
+═══════════════════════════════════════════════════════════════
+
+1. supabase/migrations/010_fix_streak_trigger_logic.sql
+   → The migration file to run in Supabase SQL Editor
+
+2. STREAK_TRIGGER_FIX_SUMMARY.md
+   → Complete technical documentation
+
+3. run_streak_fix_migration.sh
+   → Shell script (alternative method if you have psql)
+
+4. APPLY_STREAK_FIX.txt (this file)
+   → Quick reference guide
+
+═══════════════════════════════════════════════════════════════
+             COMMITTED TO GIT
+═══════════════════════════════════════════════════════════════
+
+Commit: ae1bad6
+Branch: feature/streak-system-rebuild
+Message: "fix: Streak trigger not firing on consecutive successful days"
+
+All files have been pushed to GitHub ✅
+
+═══════════════════════════════════════════════════════════════
+
+Need help? Check STREAK_TRIGGER_FIX_SUMMARY.md for full details.
+

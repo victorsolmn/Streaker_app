@@ -5,9 +5,48 @@ Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracki
 
 ## Recent Updates (November 2025)
 
-### Version 1.0.17+21 - Critical Bug Fixes & UX Improvements (November 18, 2025)
+### Version 1.0.17+21 - Critical Bug Fixes & UX Improvements (November 19, 2025)
 
-#### Critical Bug Fix: Daily Goals Sync Issue
+**Release Status:** ✅ Published to Google Play Store (November 19, 2025)
+**Build File:** `Streaker_v1.0.17_release.aab` (47MB)
+**Force Update:** ✅ Enabled (all users < v1.0.17 required to update)
+
+---
+
+#### Critical Bug Fix #1: Streak Trigger Logic Issue
+
+**Problem**: Streak counter stuck at 1 despite multiple consecutive successful days (Nov 16, 17, 18 all had goal_achieved: true)
+
+**Root Cause**: Database trigger in migration 007 had flawed condition:
+```sql
+-- BROKEN LOGIC (Line 310)
+IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND NEW.goal_achieved != OLD.goal_achieved) THEN
+    PERFORM update_nutrition_streak(NEW.user_id, NEW.date);
+END IF;
+```
+This condition only fired when `goal_achieved` value CHANGED (false→true or true→false). On consecutive successful days where `goal_achieved` stayed `true`, the trigger didn't fire, causing streak to remain at 1.
+
+**Solution Implemented**:
+- Created `update_nutrition_streak()` function to handle all streak calculation logic
+- Modified `update_daily_nutrition_summary()` trigger to ALWAYS call streak update on nutrition changes
+- Fixed trigger condition to fire on every INSERT or UPDATE:
+```sql
+-- FIXED LOGIC
+IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+    PERFORM update_nutrition_streak(v_user_id, v_date);
+END IF;
+```
+- Backfilled all historical streak data in chronological order
+
+**Files Modified**:
+- Database: Complete streak fix SQL (applied via Supabase SQL Editor)
+- Documentation: `STREAK_TRIGGER_FIX_SUMMARY.md`, `APPLY_STREAK_FIX.txt`
+
+**Impact**: Consecutive successful days now properly increment streak ✅
+
+---
+
+#### Critical Bug Fix #2: Daily Goals Sync Issue
 
 **Problem**: Daily goals calculated during onboarding were not displaying on homepage after user completed setup.
 
@@ -216,6 +255,48 @@ RichText(
 - ~3,100 lines added
 - 0 breaking changes
 - Fully backward compatible
+
+---
+
+#### Force Update System Implementation
+
+**Feature**: Database-driven force update mechanism to ensure users stay on latest version
+
+**Implementation**:
+- Created SQL script `UPDATE_APP_CONFIG_V1.0.17.sql` to enable force updates
+- Updates `app_config` table with minimum version requirements
+- Force update dialog blocks app usage for critical updates
+- Direct App Store/Play Store navigation from update dialog
+
+**Configuration Applied (November 19, 2025)**:
+```sql
+UPDATE app_config
+SET
+    min_version = '1.0.17',
+    min_build_number = 21,
+    force_update = true,
+    update_severity = 'critical',
+    update_message = 'Critical update available! ...',
+    features_list = ARRAY[
+        '🔥 Fixed: Daily goals now sync correctly',
+        '📊 Enhanced: Nutrition display shows consumed/goal format',
+        '✨ Fixed: Streak counter works on consecutive days',
+        '🎨 New: Foundation components for better UX'
+    ]
+WHERE platform = 'android';
+```
+
+**User Experience**:
+- Users with version < 1.0.17 see mandatory update dialog on app launch
+- Dialog is non-dismissible (critical severity)
+- "Update" button redirects to Play Store
+- After updating to 1.0.17, no more prompts
+
+**Files Created**:
+- Desktop: `UPDATE_APP_CONFIG_V1.0.17.sql` - Force update configuration
+- Desktop: `PLAY_STORE_RELEASE_CHECKLIST_V1.0.17.md` - Complete release guide
+
+**Status**: ✅ Force update ACTIVE for all Android users since November 19, 2025
 
 ---
 

@@ -416,7 +416,14 @@ User Browses/Purchases
 - `current_streak` (integer)
 - `longest_streak` (integer)
 - `last_completed_date` (date)
+- `last_checked_date` (date)
 - `grace_days_used` (integer)
+- **Trigger System** (Fixed November 19, 2025):
+  - Database trigger on `nutrition_entries` table fires `update_daily_nutrition_summary()`
+  - Summary function ALWAYS calls `update_nutrition_streak()` on every INSERT/UPDATE
+  - Streak function calculates consecutive days, handles gaps, and updates streaks table
+  - **Critical Fix**: Changed trigger condition from `NEW.goal_achieved != OLD.goal_achieved` to always fire
+  - Impact: Consecutive successful days now properly increment streak (was stuck at 1)
 
 ### E-Commerce Tables (Added November 16, 2025 - v1.0.14)
 
@@ -846,6 +853,124 @@ build/app/outputs/bundle/release/app-release.aab
 - Modular dependency injection
 - Feature flags system
 - A/B testing framework
+
+## Recent Critical Updates (November 2025)
+
+### Version 1.0.17+21 - Production Release
+
+**Release Date:** November 19, 2025
+**Build Status:** ✅ Published to Google Play Store
+**Force Update:** ✅ Active (all users < v1.0.17 required to update)
+
+#### Streak Trigger System Fix
+
+**Problem Identified:**
+- Database trigger only fired when `goal_achieved` value changed (false→true)
+- Consecutive successful days (true→true) didn't trigger streak updates
+- Result: Streak counter stuck at 1 despite multiple successful days
+
+**Architecture Fix:**
+```sql
+-- BEFORE (Broken Logic)
+CREATE OR REPLACE FUNCTION update_daily_nutrition_summary()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- ... summary calculations
+
+    -- BROKEN: Only fires on value change
+    IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND NEW.goal_achieved != OLD.goal_achieved) THEN
+        PERFORM update_nutrition_streak(NEW.user_id, NEW.date);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- AFTER (Fixed Logic)
+CREATE OR REPLACE FUNCTION update_daily_nutrition_summary()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- ... summary calculations
+
+    -- FIXED: Always fires on INSERT or UPDATE
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        PERFORM update_nutrition_streak(v_user_id, v_date);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Trigger Flow (Updated):**
+```
+User adds nutrition entry
+    → nutrition_entries table INSERT/UPDATE
+    → trigger_update_daily_nutrition_summary() fires
+    → update_daily_nutrition_summary() function runs
+    → Calculates total calories, protein, carbs, fat
+    → UPSERTs to daily_nutrition_summary view
+    → ALWAYS calls update_nutrition_streak() function ✅ (NEW)
+    → Streak function checks yesterday's completion
+    → If consecutive: increment streak
+    → If gap: reset to 1
+    → Updates streaks table
+    → App UI refreshes with correct streak count
+```
+
+**Impact:**
+- Fixed streak calculation for all users
+- Backfilled historical data chronologically
+- Consecutive successful days now properly increment
+- No app code changes required (database-only fix)
+
+#### Force Update System Implementation
+
+**Purpose:** Ensure all users upgrade to v1.0.17 with critical bug fixes
+
+**Database Configuration (app_config table):**
+```sql
+UPDATE app_config
+SET
+    min_version = '1.0.17',
+    min_build_number = 21,
+    force_update = true,
+    update_severity = 'critical',
+    update_message = 'Critical update available! Daily goals sync fix, nutrition display enhancement, streak tracking fix.',
+    features_list = ARRAY[
+        '🔥 Fixed: Daily goals now sync correctly',
+        '📊 Enhanced: Nutrition display shows consumed/goal format',
+        '✨ Fixed: Streak counter works on consecutive days',
+        '🎨 New: Foundation components for better UX'
+    ],
+    updated_at = NOW()
+WHERE platform = 'android';
+```
+
+**User Experience:**
+1. User with v1.0.16 or earlier opens app
+2. App checks `app_config` table in Supabase
+3. Compares current version (1.0.16) < min_version (1.0.17)
+4. Sees `force_update = true` and `update_severity = 'critical'`
+5. Force update dialog appears (non-dismissible)
+6. User taps "Update" → Redirected to Play Store
+7. After updating to v1.0.17 → No more dialogs
+
+**Architecture Components:**
+- `/lib/services/version_manager_service.dart` - Version comparison logic
+- `/lib/widgets/force_update_dialog.dart` - Update UI component
+- `/lib/widgets/app_wrapper.dart` - App-level version check wrapper
+- `app_config` table - Server-side version control
+
+**Timing Strategy:**
+- AAB uploaded to Play Store FIRST
+- Wait for app approval and live status
+- THEN enable force update via SQL
+- Prevents users being stuck unable to update
+
+**Status:** ✅ Live since November 19, 2025
+
+---
 
 ## Development Best Practices
 
