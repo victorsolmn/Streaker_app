@@ -141,6 +141,12 @@ lib/
   - `loadNutritionForDate(DateTime)` - Fetch date-specific entries from Supabase
   - `selectedDateNutrition` - Getter for selected date's nutrition summary
   - Enables weekly calendar interaction with data persistence
+- **Force Sync System** (Added November 19, 2025 - v1.0.18):
+  - `_syncToSupabase({bool forceSync = false})` - Bypass throttle for user actions
+  - 60-second throttle for background syncs, immediate sync for user-initiated entries
+  - Prevents data loss from rapid entry addition
+  - `addNutritionEntry()` calls sync with `forceSync: true`
+  - Ensures entries persist to database within 2 seconds of creation
 
 **StreakProvider**
 - Tracks daily goal completion
@@ -609,6 +615,84 @@ Text(
 - Retry logic with exponential backoff
 - Connection state monitoring
 
+## Authentication System
+
+### OAuth Integration (Google SSO)
+
+**Implementation** (`lib/providers/supabase_auth_provider.dart`):
+```dart
+Future<bool> signInWithGoogle() async {
+  final response = await _supabaseService.client.auth.signInWithOAuth(
+    OAuthProvider.google,
+    authScreenLaunchMode: LaunchMode.externalApplication,
+    redirectTo: 'com.streaker.streaker://login-callback',
+    scopes: 'email profile',
+  );
+
+  // 60-second timeout for OAuth callback (November 19, 2025 - v1.0.18)
+  int attempts = 0;
+  while (!authCompleted && attempts < 120) {
+    await Future.delayed(Duration(milliseconds: 500));
+    attempts++;
+
+    final currentUser = _supabaseService.currentUser;
+    if (currentUser != null) {
+      authCompleted = true;
+      _currentUser = currentUser;
+      break;
+    }
+  }
+}
+```
+
+**Key Features** (Enhanced v1.0.18):
+- **Extended Timeout**: 60 seconds (increased from 10s) for reliable OAuth flow
+- **Explicit Redirect URL**: `com.streaker.streaker://login-callback` matches Supabase config
+- **Deep Link Handling**: AndroidManifest.xml configured for `com.streaker.streaker://` scheme
+- **Auto User Creation**: `_ensureUserProfileExists()` creates profile if missing
+- **Session Management**: JWT-based authentication with automatic refresh
+- **Platform Support**: Works on both iOS and Android with platform-specific handling
+
+**OAuth Flow** (November 19, 2025):
+```
+User Taps "Continue with Google"
+    ↓
+App calls signInWithOAuth()
+    ↓
+External browser/webview opens → Google authentication
+    ↓
+User approves permissions
+    ↓
+Google redirects to: com.streaker.streaker://login-callback
+    ↓
+App deep link intercepts callback
+    ↓
+Supabase creates session (JWT tokens)
+    ↓
+60-second polling checks for session
+    ↓
+Navigate to onboarding (new user) or main screen (existing user)
+```
+
+**Supabase Configuration Required**:
+- Redirect URLs whitelisted: `com.streaker.streaker://login-callback`, `com.streaker.streaker://`
+- Google OAuth provider enabled with Client ID and Secret
+- Scopes: `email`, `profile`
+
+### OTP Authentication
+
+**Unified Auth Screen** (`lib/screens/auth/unified_auth_screen.dart`):
+- Single email input for both signup/signin
+- 6-digit OTP codes sent via email
+- 5-minute expiration for security
+- No password storage required
+- Terms & Privacy Policy acceptance checkbox
+
+**OTP Flow**:
+```dart
+sendOTP(email) → Supabase sends code → verifyOTP(email, code) → Session created
+```
+
 ## Security Measures
 
 ### Data Protection
@@ -616,12 +700,16 @@ Text(
 - Row-level security in Supabase
 - Secure credential storage
 - No plaintext passwords
+- JWT-based session management
+- OAuth 2.0 for third-party authentication
 
 ### API Security
 - Rate limiting protection
 - Request validation
 - CORS configuration
 - API key rotation support
+- OAuth redirect URL whitelisting
+- Deep link security validation
 
 ## Platform-Specific Implementations
 

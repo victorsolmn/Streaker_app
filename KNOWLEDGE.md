@@ -5,6 +5,149 @@ Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracki
 
 ## Recent Updates (November 2025)
 
+### Version 1.0.18 - Critical Nutrition Sync & OAuth Fixes (November 19, 2025)
+
+**Release Status:** 🔄 In Development
+**Key Fixes:** Nutrition data persistence, Google SSO login improvements
+
+---
+
+#### Critical Bug Fix #1: Nutrition Entry Sync Throttling
+
+**Problem**: Nutrition entries disappearing after refresh despite showing "success" in the app
+
+**Root Causes Identified:**
+1. **60-Second Sync Throttle**: Prevented immediate saving when users added entries rapidly
+2. **Database View Issue**: `daily_nutrition_summary` was a VIEW instead of TABLE, blocking INSERTs
+3. **Date Query Logic**: Query used `created_at` timestamp instead of `date` field
+
+**Solution Implemented:**
+
+1. **Force Sync for User Actions** (`lib/providers/nutrition_provider.dart`)
+   - Added `forceSync` boolean parameter to `_syncToSupabase()` method
+   - Modified throttle logic to bypass 60-second limit when `forceSync: true`
+   - User-initiated actions now sync immediately, background syncs still throttled
+   ```dart
+   // Line 465: User adds entry → force immediate sync
+   await _syncToSupabase(forceSync: true);
+
+   // Lines 510-522: Throttle logic
+   if (!forceSync && _lastSyncTime != null) {
+     final timeSinceLastSync = DateTime.now().difference(_lastSyncTime!);
+     if (timeSinceLastSync.inSeconds < 60) {
+       return; // Skip only if not forced
+     }
+   }
+   ```
+
+2. **Database Table Conversion** (`supabase/migrations/011_create_daily_nutrition_summary_table.sql`)
+   - Dropped VIEW: `DROP VIEW IF EXISTS daily_nutrition_summary CASCADE;`
+   - Created proper TABLE with UNIQUE constraint on `(user_id, date)`
+   - Added indexes for performance: `idx_daily_nutrition_summary_user_date`
+   - Enabled Row Level Security with proper policies
+   - Backfilled historical data from Nov 16-18 (3-day streak restored)
+
+3. **Query Fix** (`lib/services/supabase_service.dart:340-360`)
+   - Changed from `created_at` timestamp to `date` field for daily queries
+   - Ensures entries from same calendar day are grouped correctly
+   ```dart
+   .eq('date', dateStr)  // FIXED: Now uses date field
+   ```
+
+**Files Modified:**
+- `lib/providers/nutrition_provider.dart` - Force sync implementation
+- `lib/services/supabase_service.dart` - Date query fix
+- `supabase/migrations/011_create_daily_nutrition_summary_table.sql` - TABLE creation
+- Database: Backfill script for historical nutrition data
+
+**Impact**:
+- ✅ Nutrition entries persist after refresh
+- ✅ Rapid entry addition works (multiple entries within seconds)
+- ✅ Streak calculations accurate
+- ✅ No more "cannot insert into view" errors
+
+---
+
+#### Critical Bug Fix #2: Google SSO OAuth Improvements
+
+**Problem**: Google SSO login timing out, not redirecting back to app after authentication
+
+**Changes Implemented:**
+
+1. **Increased OAuth Timeout** (`lib/providers/supabase_auth_provider.dart:294-314`)
+   - Changed from 10 seconds to 60 seconds for OAuth callback wait time
+   - Reduces log spam from every 2s to every 5s (10 attempts vs 5 attempts)
+   - Better handling of slow OAuth flows on different devices
+
+2. **Explicit Redirect URL** (`lib/providers/supabase_auth_provider.dart:258`)
+   - Restored `redirectTo: 'com.streaker.streaker://login-callback'` parameter
+   - Explicitly set redirect instead of relying on automatic Supabase handling
+   - Matches configured URLs in Supabase dashboard
+
+3. **Enhanced User Feedback** (`lib/screens/auth/unified_auth_screen.dart:91`)
+   - Changed loading message to "Opening Google Sign In..." for clarity
+   - Better error messages for common OAuth issues
+   - Improved debug logging with event tracking
+
+**OAuth Flow Architecture:**
+```
+User Taps Google Button
+    ↓
+signInWithOAuth(redirectTo: 'com.streaker.streaker://login-callback')
+    ↓
+External Browser Opens → Google Authentication
+    ↓
+Redirect to: com.streaker.streaker://login-callback
+    ↓
+App Deep Link Handles Callback → Session Created
+    ↓
+60-second timeout ensures proper wait
+    ↓
+Navigate to Onboarding or Main Screen
+```
+
+**Files Modified:**
+- `lib/providers/supabase_auth_provider.dart` - Timeout and redirect improvements
+- `lib/screens/auth/unified_auth_screen.dart` - User feedback enhancement
+
+**Current Status**: Testing in progress on Samsung device (RZCY91SVGSY)
+
+---
+
+#### Technical Architecture Changes
+
+**Nutrition Sync Flow (After Fix):**
+```
+User Adds Entry
+    ↓
+addNutritionEntry() called
+    ↓
+Entry saved to local storage
+    ↓
+_syncToSupabase(forceSync: true) ← BYPASSES THROTTLE
+    ↓
+Upload to nutrition_entries TABLE
+    ↓
+Database trigger updates daily_nutrition_summary TABLE
+    ↓
+update_nutrition_streak() calculates streak
+    ↓
+UI updates with new data
+```
+
+**Data Priority System:**
+- Live health data (HealthKit/Health Connect): HIGHEST priority
+- Supabase cache: MEDIUM priority (fallback for offline)
+- Local storage: LOWEST priority
+- Force sync ensures user actions override all caching
+
+**Database Schema Changes:**
+- `daily_nutrition_summary`: Changed from VIEW to TABLE
+- Columns: `id, user_id, date, total_calories, total_protein, total_carbs, total_fat, calorie_target, goal_achieved, created_at, updated_at`
+- Constraint: `UNIQUE(user_id, date)` ensures one summary per day
+
+---
+
 ### Version 1.0.17+21 - Critical Bug Fixes & UX Improvements (November 19, 2025)
 
 **Release Status:** ✅ Published to Google Play Store (November 19, 2025)
