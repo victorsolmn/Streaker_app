@@ -4,11 +4,16 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import '../../providers/supabase_user_provider.dart';
 import '../../providers/nutrition_provider.dart';
+import '../../providers/workout_provider.dart';
 import '../../services/grok_service.dart';
 import '../../services/chat_session_service.dart';
 import '../../services/user_context_builder.dart';
+import '../../services/workout_parser.dart';
 import '../../models/chat_session.dart';
+import '../../models/workout_template.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/interactive_workout_card.dart';
+import '../workout/active_workout_screen.dart';
 import 'dart:async';
 
 class ChatScreen extends StatefulWidget {
@@ -810,6 +815,19 @@ $recentContext
     final isUser = message.isUser;
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
+    // Try to parse workout if it's an AI message
+    WorkoutTemplate? workout;
+    if (!isUser) {
+      final userProvider = Provider.of<SupabaseUserProvider>(context, listen: false);
+      final userId = userProvider.currentUser?.id;
+      if (userId != null) {
+        workout = WorkoutParser().parseWithCleaning(message.message, userId);
+      }
+    }
+
+    // Check if AI message contains workout-related content
+    final bool hasWorkoutContent = !isUser && _containsWorkoutKeywords(message.message);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: Column(
@@ -847,50 +865,517 @@ $recentContext
             ),
           ),
 
-          // Message content
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: isUser
-                ? Text(
-                    message.message,
-                    style: TextStyle(
-                      color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                      fontSize: 15,
-                      height: 1.5,
-                    ),
-                  )
-                : MarkdownBody(
-                    data: message.message,
-                    styleSheet: MarkdownStyleSheet(
-                      p: TextStyle(
+          // Message content - Display interactive workout card if workout detected
+          if (workout != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: InteractiveWorkoutCard(
+                workout: workout!,
+                onStartWorkout: () => _startWorkout(workout!),
+                onSaveTemplate: () => _saveWorkoutTemplate(workout!),
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: isUser
+                  ? Text(
+                      message.message,
+                      style: TextStyle(
                         color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
                         fontSize: 15,
                         height: 1.5,
                       ),
-                      h1: TextStyle(
-                        color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      h2: TextStyle(
-                        color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      listBullet: TextStyle(
-                        color: AppTheme.primaryAccent,
-                        fontSize: 15,
-                      ),
-                      strong: TextStyle(
-                        color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
-                        fontWeight: FontWeight.bold,
+                    )
+                  : MarkdownBody(
+                      data: message.message,
+                      styleSheet: MarkdownStyleSheet(
+                        p: TextStyle(
+                          color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
+                          fontSize: 15,
+                          height: 1.5,
+                        ),
+                        h1: TextStyle(
+                          color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        h2: TextStyle(
+                          color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        listBullet: TextStyle(
+                          color: AppTheme.primaryAccent,
+                          fontSize: 15,
+                        ),
+                        strong: TextStyle(
+                          color: isDarkMode ? AppTheme.textPrimaryDark : AppTheme.textPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
+            ),
+
+          // Manual "Start Workout" button for AI messages with workout content
+          if (workout == null && hasWorkoutContent)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 16),
+              child: OutlinedButton.icon(
+                onPressed: () => _showManualWorkoutDialog(message.message),
+                icon: const Icon(Icons.fitness_center, size: 18),
+                label: const Text('Convert to Interactive Workout'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primaryAccent,
+                  side: BorderSide(color: AppTheme.primaryAccent, width: 1.5),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-          ),
+                ),
+              ),
+            ),
         ],
       ),
+    );
+  }
+
+  /// Detect if message contains workout-related keywords
+  bool _containsWorkoutKeywords(String message) {
+    final lower = message.toLowerCase();
+    final workoutKeywords = [
+      'workout',
+      'exercise',
+      'sets',
+      'reps',
+      'repetitions',
+      'training',
+      'push-up',
+      'pull-up',
+      'squat',
+      'deadlift',
+      'bench press',
+      'plank',
+      'lunge',
+      'curl',
+      'dumbbell',
+      'barbell',
+      'cardio',
+      'hiit',
+      'strength',
+      'muscle',
+      'rest period',
+      'warm up',
+      'cool down',
+    ];
+
+    return workoutKeywords.any((keyword) => lower.contains(keyword));
+  }
+
+  /// Parse exercise names and details from AI text response
+  List<TemplateExercise> _parseExercisesFromText(String aiResponse) {
+    final exercises = <TemplateExercise>[];
+
+    // Common exercise patterns in AI responses
+    final exercisePatterns = [
+      // Pattern: "1. Push-ups" or "1) Push-ups" or "- Push-ups"
+      RegExp(r'(?:^|\n)[\d\-\*•]+[\.\)]\s*([A-Z][a-zA-Z\s\-]+?)(?:\s*[-–:]|\s*\(|\s*\n|$)', multiLine: true),
+      // Pattern: "Push-ups:" or "Push-ups -"
+      RegExp(r'(?:^|\n)([A-Z][a-zA-Z\s\-]+?)(?:\s*[-–:])\s*(?:\d+|for)', multiLine: true),
+      // Pattern: Exercise names followed by sets/reps info
+      RegExp(r'(?:^|\n)([A-Z][a-zA-Z\s\-]+?)(?:\s*[-–:]\s*)?(?:\d+\s*(?:sets|x|×))', multiLine: true, caseSensitive: false),
+    ];
+
+    final foundExercises = <String>{};  // Use Set to avoid duplicates
+
+    for (final pattern in exercisePatterns) {
+      final matches = pattern.allMatches(aiResponse);
+      for (final match in matches) {
+        if (match.groupCount > 0) {
+          final exerciseName = match.group(1)?.trim();
+          if (exerciseName != null && exerciseName.length > 3 && exerciseName.length < 50) {
+            // Filter out common false positives
+            final lowerName = exerciseName.toLowerCase();
+            if (!lowerName.contains('workout') &&
+                !lowerName.contains('minute') &&
+                !lowerName.contains('circuit') &&
+                !lowerName.contains('round') &&
+                !lowerName.startsWith('for ') &&
+                !lowerName.startsWith('to ') &&
+                !lowerName.startsWith('the ')) {
+              foundExercises.add(exerciseName);
+            }
+          }
+        }
+      }
+    }
+
+    // Convert found exercise names to TemplateExercise objects
+    for (final exerciseName in foundExercises.take(10)) {  // Limit to 10 exercises
+      // Try to extract sets/reps information from context
+      final exerciseContext = _extractExerciseContext(aiResponse, exerciseName);
+
+      exercises.add(TemplateExercise(
+        name: exerciseName,
+        sets: exerciseContext['sets'] ?? 3,
+        reps: exerciseContext['reps'] ?? 10,
+        restSeconds: exerciseContext['rest'] ?? 60,
+        weightKg: null,
+        notes: exerciseContext['notes'] ?? 'See AI suggestions above for details',
+        muscleGroups: [],
+      ));
+    }
+
+    print('🏋️ Parsed ${exercises.length} exercises from AI response');
+    for (final ex in exercises) {
+      print('   - ${ex.name}: ${ex.sets}×${ex.reps}, ${ex.restSeconds}s rest');
+    }
+
+    return exercises;
+  }
+
+  /// Extract exercise context (sets, reps, rest) from surrounding text
+  Map<String, dynamic> _extractExerciseContext(String text, String exerciseName) {
+    final context = <String, dynamic>{};
+
+    // Find the section of text containing this exercise
+    final exerciseIndex = text.toLowerCase().indexOf(exerciseName.toLowerCase());
+    if (exerciseIndex == -1) return context;
+
+    // Look at ~200 characters around the exercise name
+    final start = (exerciseIndex - 50).clamp(0, text.length);
+    final end = (exerciseIndex + 150).clamp(0, text.length);
+    final section = text.substring(start, end).toLowerCase();
+
+    // Extract sets
+    final setsMatch = RegExp(r'(\d+)\s*(?:sets|x|×)').firstMatch(section);
+    if (setsMatch != null) {
+      context['sets'] = int.tryParse(setsMatch.group(1)!) ?? 3;
+    }
+
+    // Extract reps
+    final repsMatch = RegExp(r'(?:x|×)\s*(\d+)|(\d+)\s*reps?').firstMatch(section);
+    if (repsMatch != null) {
+      context['reps'] = int.tryParse(repsMatch.group(1) ?? repsMatch.group(2)!) ?? 10;
+    }
+
+    // Extract rest time
+    final restMatch = RegExp(r'(\d+)\s*(?:sec|second)s?\s*rest').firstMatch(section);
+    if (restMatch != null) {
+      context['rest'] = int.tryParse(restMatch.group(1)!) ?? 60;
+    }
+
+    return context;
+  }
+
+  void _startWorkout(WorkoutTemplate workout) {
+    final userProvider = Provider.of<SupabaseUserProvider>(context, listen: false);
+    final userId = userProvider.currentUser?.id;
+
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to start workout')),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ActiveWorkoutScreen(
+          template: workout,
+          userId: userId,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveWorkoutTemplate(WorkoutTemplate workout) async {
+    final workoutProvider = Provider.of<WorkoutProvider>(context, listen: false);
+
+    try {
+      await workoutProvider.saveTemplate(workout);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Workout template saved successfully!'),
+            backgroundColor: AppTheme.success,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save template: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Show dialog to manually create workout from AI text response
+  void _showManualWorkoutDialog(String aiResponse) {
+    final userProvider = Provider.of<SupabaseUserProvider>(context, listen: false);
+    final userId = userProvider.currentUser?.id;
+
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to create workouts')),
+      );
+      return;
+    }
+
+    final TextEditingController nameController = TextEditingController(text: 'Custom Workout');
+    final TextEditingController typeController = TextEditingController(text: 'Strength');
+    final TextEditingController durationController = TextEditingController(text: '30');
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Create Workout'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Create an interactive workout based on the AI response:',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Workout Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: typeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Type (e.g., Strength, Cardio, HIIT)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: durationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Estimated Duration (minutes)',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'You\'ll be able to add exercises and customize the workout in the next screen.',
+                    style: TextStyle(fontSize: 12, color: Colors.blue),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _createManualWorkout(
+                  userId: userId,
+                  name: nameController.text.trim(),
+                  type: typeController.text.trim(),
+                  duration: int.tryParse(durationController.text) ?? 30,
+                  aiResponse: aiResponse,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryAccent,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Create Workout'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Create a manual workout template from user input
+  void _createManualWorkout({
+    required String userId,
+    required String name,
+    required String type,
+    required int duration,
+    required String aiResponse,
+  }) {
+    // Parse exercises from AI response text
+    final exercises = _parseExercisesFromText(aiResponse);
+
+    // If no exercises were parsed, use generic placeholders
+    final List<TemplateExercise> workoutExercises = exercises.isEmpty
+        ? [
+            TemplateExercise(
+              name: 'Exercise 1',
+              sets: 3,
+              reps: 10,
+              restSeconds: 60,
+              weightKg: null,
+              notes: 'Replace with actual exercise from AI suggestions above',
+              muscleGroups: [],
+            ),
+            TemplateExercise(
+              name: 'Exercise 2',
+              sets: 3,
+              reps: 10,
+              restSeconds: 60,
+              weightKg: null,
+              notes: 'Replace with actual exercise from AI suggestions above',
+              muscleGroups: [],
+            ),
+            TemplateExercise(
+              name: 'Exercise 3',
+              sets: 3,
+              reps: 10,
+              restSeconds: 60,
+              weightKg: null,
+              notes: 'Replace with actual exercise from AI suggestions above',
+              muscleGroups: [],
+            ),
+          ]
+        : exercises;
+
+    // Create a basic workout template with parsed or placeholder exercises
+    final workout = WorkoutTemplate(
+      id: '',
+      userId: userId,
+      name: name.isEmpty ? 'Custom Workout' : name,
+      workoutType: type.isEmpty ? 'Strength' : type,
+      estimatedDurationMinutes: duration,
+      difficultyLevel: 'Intermediate',
+      equipmentNeeded: ['Bodyweight'],
+      exercises: workoutExercises,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      isFavorite: false,
+      source: 'ai',  // Mark as AI-generated workout
+    );
+
+    // Show the workout card in a bottom sheet with options
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          maxChildSize: 0.9,
+          minChildSize: 0.5,
+          builder: (_, controller) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Handle bar
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  // Content
+                  Expanded(
+                    child: ListView(
+                      controller: controller,
+                      padding: const EdgeInsets.all(20),
+                      children: [
+                        const Text(
+                          'Workout Created',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Your workout has been created with placeholder exercises. You can customize them during the workout.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                        const SizedBox(height: 20),
+                        InteractiveWorkoutCard(
+                          workout: workout,
+                          onStartWorkout: () {
+                            Navigator.pop(context);
+                            _startWorkout(workout);
+                          },
+                          // Removed onSaveTemplate - save functionality disabled for now
+                        ),
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.lightbulb, color: Colors.blue, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'AI Suggestions:',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                aiResponse,
+                                style: const TextStyle(fontSize: 13),
+                                maxLines: 8,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

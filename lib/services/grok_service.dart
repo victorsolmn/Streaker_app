@@ -28,6 +28,44 @@ Examples of clarifying questions for vague queries:
 
 **NEVER** provide lengthy explanations or general advice unless specifically requested.''';
 
+  // System prompt for structured workout generation
+  static const String _workoutPrompt = '''
+You are Streaker AI Workout Generator API. Your response MUST be valid JSON ONLY - no markdown, no explanations, no additional text.
+
+CRITICAL: Start your response with { and end with }. Nothing else.
+
+Required JSON structure:
+{
+  "workout_type": "Strength",
+  "estimated_duration_minutes": 30,
+  "equipment_needed": ["Bodyweight"],
+  "difficulty_level": "Beginner",
+  "exercises": [
+    {
+      "name": "Push-ups",
+      "sets": 3,
+      "reps": 10,
+      "rest_seconds": 60,
+      "weight_kg": null,
+      "notes": "Keep core tight, full range of motion",
+      "muscle_groups": ["Chest", "Triceps", "Shoulders"]
+    }
+  ]
+}
+
+STRICT RULES - VIOLATION WILL BREAK THE APP:
+1. FIRST character = {  LAST character = }
+2. NO markdown code blocks (```json)
+3. NO explanatory text before/after JSON
+4. NO conversational language
+5. Include 4-8 exercises per workout
+6. For bodyweight: set weight_kg to null
+7. Rest times: 60s strength, 30s HIIT, 90s heavy compound
+8. workout_type options: "Strength", "Cardio", "Full Body", "HIIT", "Upper Body", "Lower Body", "Core"
+9. difficulty_level options: "Beginner", "Intermediate", "Advanced"
+
+REMEMBER: Return ONLY raw JSON. Your first character must be {''';
+
   static final GrokService _instance = GrokService._internal();
   factory GrokService() => _instance;
   GrokService._internal();
@@ -40,18 +78,29 @@ Examples of clarifying questions for vague queries:
   }) async {
     print('🤖 GROK API: Starting API call for message: "${userMessage.substring(0, userMessage.length > 50 ? 50 : userMessage.length)}..."');
 
-    // Check for vague queries first (but only if no conversation history)
-    if ((conversationHistory == null || conversationHistory.isEmpty) && _isVagueQuery(userMessage)) {
+    // Check if this is a workout generation request
+    final isWorkoutRequest = _isWorkoutRequest(userMessage);
+    if (isWorkoutRequest) {
+      print('🤖 GROK API: Detected workout request, using structured JSON format');
+    }
+
+    // Check for vague queries first (but only if no conversation history and not a workout request)
+    if (!isWorkoutRequest && (conversationHistory == null || conversationHistory.isEmpty) && _isVagueQuery(userMessage)) {
       print('🤖 GROK API: Detected vague query, returning clarifying question');
       return _getClarifyingQuestion(userMessage);
     }
 
     try {
+      // Choose system prompt based on request type
+      final systemPrompt = isWorkoutRequest
+          ? _workoutPrompt
+          : (personalizedSystemPrompt ?? _systemPrompt);
+
       // Build messages array with system prompt
       final messages = [
         {
           'role': 'system',
-          'content': personalizedSystemPrompt ?? _systemPrompt,
+          'content': systemPrompt,
         },
       ];
 
@@ -71,10 +120,14 @@ Examples of clarifying questions for vague queries:
         messages.addAll(conversationHistory);
       }
 
-      // Add current user message
+      // Add current user message (with JSON enforcement for workouts)
+      final finalUserMessage = isWorkoutRequest
+          ? '$userMessage\n\nREMINDER: Respond with ONLY valid JSON starting with { and ending with }. No other text.'
+          : userMessage;
+
       messages.add({
         'role': 'user',
-        'content': userMessage,
+        'content': finalUserMessage,
       });
 
       print('🤖 GROK API: Making request to $_baseUrl');
@@ -142,6 +195,63 @@ Examples of clarifying questions for vague queries:
 • You can still browse your stats and logs
 
 Feel free to try again in a moment! 💪''';
+  }
+
+  // Detect if user is requesting a workout plan
+  bool _isWorkoutRequest(String message) {
+    final lower = message.toLowerCase();
+
+    // Workout generation keywords
+    final workoutKeywords = [
+      'give me a workout',
+      'create a workout',
+      'generate a workout',
+      'workout plan',
+      'workout routine',
+      'exercise plan',
+      'exercise routine',
+      'training plan',
+      'training routine',
+      'design a workout',
+      'build a workout',
+      'make me a workout',
+      'need a workout',
+      'want a workout',
+      'quick workout',
+      'full body workout',
+      'upper body workout',
+      'lower body workout',
+      'leg workout',
+      'arm workout',
+      'core workout',
+      'ab workout',
+      'cardio workout',
+      'strength workout',
+      'hiit workout',
+      'home workout',
+      'gym workout',
+    ];
+
+    // Check for exact matches or contains
+    for (final keyword in workoutKeywords) {
+      if (lower.contains(keyword)) {
+        return true;
+      }
+    }
+
+    // Check for patterns like "X minute workout"
+    final minutePattern = RegExp(r'\d+\s*(min|minute|minutes)\s+(workout|routine|plan|session)');
+    if (minutePattern.hasMatch(lower)) {
+      return true;
+    }
+
+    // Check for patterns like "workout for X"
+    final targetPattern = RegExp(r'workout\s+for\s+(chest|back|legs|arms|shoulders|core|abs|glutes)');
+    if (targetPattern.hasMatch(lower)) {
+      return true;
+    }
+
+    return false;
   }
 
   bool _isVagueQuery(String message) {
