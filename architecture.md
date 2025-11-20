@@ -51,11 +51,14 @@ lib/
 │   │   ├── progress_screen_new.dart   # Progress tracking (Weight)
 │   │   ├── profile_screen.dart        # User profile
 │   │   ├── main_screen.dart          # Navigation container (5 tabs)
-│   │   ├── chat_screen.dart          # AI Coach / Workouts
+│   │   ├── chat_screen.dart          # AI Coach / Workouts (ENHANCED v1.0.18+22)
 │   │   ├── marketplace_screen.dart   # Supplement marketplace (REPLACED v1.0.14)
 │   │   ├── cart_screen.dart          # Shopping cart with undo (ENHANCED v1.0.17)
 │   │   ├── help_screen.dart          # Help & FAQ (NEW v1.0.17)
 │   │   └── nutrition_home_screen.dart # Nutrition with consumed/goal display (ENHANCED v1.0.17)
+│   ├── workout/                 # Workout screens (NEW v1.0.18+22)
+│   │   ├── active_workout_screen.dart      # Workout execution with timer
+│   │   └── workout_completion_screen.dart  # Celebration screen with confetti
 │   └── legal/                   # Legal screens
 │       ├── privacy_policy_screen.dart
 │       └── terms_conditions_screen.dart
@@ -65,19 +68,26 @@ lib/
 │   ├── nutrition_provider.dart       # Nutrition tracking
 │   ├── streak_provider.dart          # Streak management
 │   ├── marketplace_provider.dart     # E-commerce cart & products (NEW v1.0.14)
+│   ├── workout_provider.dart         # Workout session tracking (NEW v1.0.18+22)
 │   └── supabase_auth_provider.dart   # Authentication
 ├── services/                    # Business logic
 │   ├── unified_health_service.dart   # Health data aggregation
 │   ├── realtime_sync_service.dart    # Background sync
 │   ├── supabase_service.dart         # Database operations
 │   ├── enhanced_supabase_service.dart # Enhanced DB ops
-│   └── version_manager_service.dart  # App versioning
+│   ├── version_manager_service.dart  # App versioning
+│   ├── workout_service.dart          # Workout database ops (NEW v1.0.18+22, not yet used)
+│   ├── workout_parser.dart           # Text parsing for workouts (NEW v1.0.18+22)
+│   └── grok_service.dart             # AI workout generation (ENHANCED v1.0.18+22)
 ├── models/                      # Data models
 │   ├── user_model.dart
 │   ├── streak_model.dart
 │   ├── health_metrics_model.dart
 │   ├── product_model.dart           # E-commerce products (NEW v1.0.14)
-│   └── premium_membership_model.dart # Premium subscriptions (NEW v1.0.14)
+│   ├── premium_membership_model.dart # Premium subscriptions (NEW v1.0.14)
+│   ├── workout_template.dart        # Workout templates (NEW v1.0.18+22)
+│   ├── workout_session.dart         # Active workout tracking (NEW v1.0.18+22)
+│   └── workout_set.dart             # Set tracking (NEW v1.0.18+22)
 ├── widgets/                     # Reusable components
 │   ├── force_update_dialog.dart
 │   ├── app_wrapper.dart
@@ -87,7 +97,8 @@ lib/
 │   ├── empty_state_widget.dart        # Empty states (NEW v1.0.17)
 │   ├── confirmation_dialog.dart       # Confirmations (NEW v1.0.17)
 │   ├── step_indicator.dart            # Progress steps (NEW v1.0.17)
-│   └── tutorial_overlay.dart          # Tutorials (NEW v1.0.17)
+│   ├── tutorial_overlay.dart          # Tutorials (NEW v1.0.17)
+│   └── interactive_workout_card.dart  # Workout preview card (NEW v1.0.18+22)
 ├── services/                    # Business logic
 │   ├── unified_health_service.dart   # Health data aggregation
 │   ├── realtime_sync_service.dart    # Background sync
@@ -167,6 +178,20 @@ lib/
 - Calculates cart totals, savings, and item counts
 - Syncs with Supabase tables: products, shopping_cart, premium_memberships
 - Category filtering and product search capabilities
+
+**WorkoutProvider** (Added November 20, 2025 - v1.0.18+22)
+- Manages active workout sessions
+- Tracks current exercise and set progress
+- Handles timer states (play, pause, reset)
+- Provides navigation between exercises
+- Calculates workout statistics (total sets, duration, completion %)
+- **Save Functionality**: Disabled in current version (Phase 2 feature)
+- Methods:
+  - `startWorkout(WorkoutTemplate)` - Initialize workout session
+  - `completeSet(exerciseIndex, setIndex)` - Mark set as done
+  - `nextExercise()` / `previousExercise()` - Navigate workout
+  - `completeWorkout()` - Finish session and trigger confetti
+  - **NOT YET**: `saveWorkoutTemplate()` - Deferred to Phase 2
 
 ### 2. Service Layer
 
@@ -386,6 +411,105 @@ User Browses/Purchases
 3. Wishlist integration in Profile screen
 4. Streak-based reward discounts
 5. AI product recommendations
+
+#### Interactive Workout System (Added November 20, 2025 - v1.0.18+22)
+```
+User in Chat Screen: "Give me a 30-minute upper body workout"
+    ↓
+GrokService._isWorkoutRequest() detects keywords
+    ↓
+Uses _workoutPrompt system prompt (JSON-only response)
+    ↓
+GROK API returns structured JSON:
+{
+  "workout_type": "Upper Body",
+  "estimated_duration_minutes": 30,
+  "equipment_needed": ["Dumbbells"],
+  "difficulty_level": "Intermediate",
+  "exercises": [
+    {
+      "name": "Dumbbell Bench Press",
+      "sets": 3,
+      "reps": 12,
+      "rest_seconds": 60,
+      "weight_kg": 20,
+      "notes": "Keep core tight",
+      "muscle_groups": ["Chest", "Triceps"]
+    },
+    ...
+  ]
+}
+    ↓
+ChatScreen parses JSON → WorkoutTemplate model
+    ↓
+Displays InteractiveWorkoutCard (no Save button)
+    ↓
+User taps "Start Workout" button
+    ↓
+Navigate to ActiveWorkoutScreen
+    ├─ Timer with play/pause controls
+    ├─ Set completion checkboxes
+    ├─ Exercise navigation (Previous/Next)
+    └─ Progress tracking
+    ↓
+User completes all exercises
+    ↓
+Navigate to WorkoutCompletionScreen
+    ├─ Confetti celebration animation
+    ├─ Workout summary stats
+    └─ "Done" button returns to chat
+    ↓
+Return to ChatScreen (workout NOT saved to database)
+```
+
+**Key Architecture Components:**
+
+1. **Data Models** (`lib/models/`):
+   - `WorkoutTemplate` - Immutable workout definition with exercises, duration, difficulty
+   - `WorkoutSession` - Mutable active workout state with start time, current exercise
+   - `WorkoutSet` - Individual set tracking with completion status
+   - All models use `uuid` package for unique IDs
+
+2. **State Management** (`lib/providers/workout_provider.dart`):
+   - `ChangeNotifier` pattern for reactive UI updates
+   - Tracks: active session, current exercise index, set completions
+   - Timer management: play, pause, reset per exercise
+   - Progress calculations: `completionPercentage`, `totalSetsCompleted`
+   - NOT YET: Database persistence (save functionality disabled)
+
+3. **AI Service Integration** (`lib/services/grok_service.dart`):
+   - Dual system prompts: regular chat vs structured workout JSON
+   - Keyword detection via `_isWorkoutRequest()` method
+   - Patterns: "give me a workout", "leg workout", "30 minute workout", etc.
+   - JSON validation: First char `{`, last char `}`, no markdown blocks
+   - Fallback: Text parser reserved for future use
+
+4. **UI Components**:
+   - `InteractiveWorkoutCard` - Preview with stats, difficulty badge, exercise list
+   - `ActiveWorkoutScreen` - Full-screen workout execution interface
+   - `WorkoutCompletionScreen` - Celebration with confetti package
+
+**Phase 1 (Current - v1.0.18+22):**
+- ✅ AI workout generation via GROK
+- ✅ Interactive workout card display
+- ✅ Full workout execution with timer
+- ✅ Set completion tracking
+- ✅ Confetti celebration
+- ❌ Save functionality (explicitly disabled per user request)
+
+**Phase 2 (Future):**
+- Execute database migration `012_workout_tracking_system.sql`
+- Enable workout template saving to Supabase
+- Implement "My Workouts" screen
+- Add workout history and analytics
+- Enable workout editing and deletion
+- Workout sharing with other users
+
+**Technical Notes:**
+- `confetti` package (^0.7.0) for celebration animations
+- `uuid` package (^4.0.0) for unique workout/session IDs
+- Database tables defined but NOT created (migration not executed)
+- Text parser created (`workout_parser.dart`) but not currently used
 
 ## Database Schema
 

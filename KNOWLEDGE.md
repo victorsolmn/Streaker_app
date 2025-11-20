@@ -5,6 +5,197 @@ Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracki
 
 ## Recent Updates (November 2025)
 
+### Version 1.0.18+22 - Interactive Workout Feature & Force Update (November 20, 2025)
+
+**Release Status:** 🔄 In Development
+**Key Features:** AI-powered interactive workouts, Save functionality disabled for Phase 2
+**AAB File:** `streaker_1.0.18+22.aab` (47 MB) - Desktop backup created
+
+---
+
+#### Interactive Workout Generation Feature
+
+**Implementation Overview:**
+- AI-powered workout generation via GROK API integration in chat screen
+- Full workout execution system with timer, set tracking, and confetti celebration
+- Save button removed (save functionality deferred to Phase 2)
+
+**Key Components Created:**
+
+1. **Data Models** (`/lib/models/`):
+   - `workout_template.dart` - WorkoutTemplate with exercises, duration, difficulty
+   - `workout_session.dart` - Active workout tracking with start time, completion status
+   - `workout_set.dart` - Individual set tracking with reps, weight, completion
+
+2. **State Management** (`/lib/providers/workout_provider.dart`):
+   - Manages active workout sessions
+   - Tracks current exercise, set progress
+   - Handles set completion and workout navigation
+   - Provides workout statistics (total sets, duration, etc.)
+
+3. **Services**:
+   - `/lib/services/workout_service.dart` - Database operations (not yet used)
+   - `/lib/services/workout_parser.dart` - Text parsing for exercise names (Phase 2)
+   - `/lib/services/grok_service.dart` - Enhanced with workout-specific JSON prompt
+
+4. **UI Screens** (`/lib/screens/workout/`):
+   - `active_workout_screen.dart` - Main workout execution interface with:
+     - Exercise countdown timer with play/pause
+     - Set completion tracking with checkboxes
+     - Previous/Next exercise navigation
+     - "Finish Workout" button
+   - `workout_completion_screen.dart` - Celebration screen with:
+     - Confetti animation
+     - Workout summary stats
+     - "Done" button to return to chat
+
+5. **Widget Components** (`/lib/widgets/interactive_workout_card.dart`):
+   - Display workout overview with stats (duration, exercises, sets)
+   - Difficulty badge (Beginner/Intermediate/Advanced)
+   - Exercise preview list (first 3 exercises)
+   - **Save button removed** - `onSaveTemplate` parameter made optional
+   - **Action buttons**: Only "Start Workout" button visible (takes full width)
+
+**GROK API Integration:**
+
+Dual system prompts for different use cases:
+
+1. **Regular Chat Prompt** (`_systemPrompt`):
+   - 200-word max responses
+   - Fitness coaching with specific guidance
+   - Clarifying questions for vague queries
+
+2. **Workout Generation Prompt** (`_workoutPrompt`):
+   - Returns **ONLY valid JSON** (no markdown, no explanations)
+   - Strict format: `{ "workout_type", "estimated_duration_minutes", "equipment_needed", "difficulty_level", "exercises": [...] }`
+   - Automatic detection via keywords ("give me a workout", "leg workout", etc.)
+   - 4-8 exercises per workout with sets, reps, rest times
+   - Bodyweight exercises set `weight_kg: null`
+
+**Workout Generation Flow:**
+```
+User: "Give me a 30-minute upper body workout"
+    ↓
+GrokService detects workout request via _isWorkoutRequest()
+    ↓
+Uses _workoutPrompt system prompt
+    ↓
+API returns structured JSON workout
+    ↓
+ChatScreen parses JSON into WorkoutTemplate
+    ↓
+Displays InteractiveWorkoutCard with workout details
+    ↓
+User taps "Start Workout"
+    ↓
+Navigate to ActiveWorkoutScreen
+    ↓
+User completes sets, exercises, workout
+    ↓
+WorkoutCompletionScreen with confetti
+    ↓
+Return to chat
+```
+
+**Files Modified/Created:**
+```
+NEW FILES (11):
+- lib/models/workout_template.dart (242 lines)
+- lib/models/workout_session.dart (67 lines)
+- lib/models/workout_set.dart (43 lines)
+- lib/providers/workout_provider.dart (310 lines)
+- lib/screens/workout/active_workout_screen.dart (586 lines)
+- lib/screens/workout/workout_completion_screen.dart (198 lines)
+- lib/services/workout_service.dart (153 lines)
+- lib/services/workout_parser.dart (89 lines)
+- lib/widgets/interactive_workout_card.dart (357 lines)
+- supabase/migrations/012_workout_tracking_system.sql (382 lines - not yet executed)
+- pubspec.yaml dependencies: confetti ^0.7.0, uuid ^4.0.0
+
+MODIFIED FILES (3):
+- lib/main.dart - Added WorkoutProvider to providers
+- lib/screens/main/chat_screen.dart - Removed onSaveTemplate callback
+- lib/services/grok_service.dart - Enhanced with workout generation detection
+```
+
+**Database Migration (Not Yet Executed):**
+- `012_workout_tracking_system.sql` created but NOT run on database
+- Tables: workout_templates, workout_sessions, workout_exercises, workout_sets
+- RLS policies for user isolation
+- Indexes for performance
+- **Status**: Deferred to Phase 2 when save functionality is implemented
+
+**Key Design Decisions:**
+
+1. **Save Functionality Disabled:**
+   - User explicitly requested: "For now i don't want to save the workout. lets have it on future context"
+   - Made `onSaveTemplate` parameter optional in InteractiveWorkoutCard
+   - Only "Start Workout" button shown (no "Save" button)
+   - Database migration created but not executed
+
+2. **Text Parser Created But Unused:**
+   - `workout_parser.dart` created to extract exercise names from AI text
+   - Not currently needed since JSON format provides structured data
+   - Reserved for future fallback mechanism
+
+3. **Phase 2 Enhancements (Future):**
+   - Execute database migration 012
+   - Enable workout template saving to Supabase
+   - Implement "My Workouts" screen to view saved templates
+   - Add workout history tracking
+   - Enable workout editing and deletion
+
+**Testing Status:**
+- ✅ Workout generation from AI working correctly
+- ✅ Interactive workout card displays properly
+- ✅ Active workout screen functional with timer and tracking
+- ✅ Completion screen with confetti animation
+- ✅ Save button successfully removed
+- ❌ Database migration not yet tested (not executed)
+
+---
+
+#### Force Update Configuration for v1.0.18+22
+
+**Purpose:** Ensure all users upgrade to latest build with interactive workout feature
+
+**SQL Configuration Applied:**
+```sql
+UPDATE app_config
+SET
+    min_version = '1.0.18',
+    min_build_number = 22,
+    force_update = true,
+    recommended_version = '1.0.18',
+    update_severity = 'required',
+    update_message = 'New interactive workout feature available! Get AI-generated workouts with guided execution.',
+    features_list = ARRAY[
+        '🏋️ New: Interactive AI workout generation',
+        '⏱️ New: Workout execution with timer & set tracking',
+        '🎉 New: Celebration screen with confetti',
+        '🔧 Enhanced: Improved chat screen UI'
+    ],
+    updated_at = NOW()
+WHERE platform = 'android';
+```
+
+**User Experience:**
+- Users with version < 1.0.18 (build < 22) will see update prompt
+- Update severity "required" = dismissible dialog with strong CTA
+- Features list displays what's new in the update
+- Direct Play Store navigation on "Update" button tap
+
+**Deployment Timeline:**
+1. ✅ AAB built and saved to Desktop: `streaker_1.0.18+22.aab`
+2. ⏳ Upload to Google Play Store (pending)
+3. ⏳ Wait for approval and live status
+4. ✅ Force update configuration applied to database
+5. ⏳ Users will receive update prompt after app goes live
+
+**Status:** Configuration ready, waiting for Play Store approval
+
+---
+
 ### Version 1.0.18 - Critical Nutrition Sync & OAuth Fixes (November 19, 2025)
 
 **Release Status:** 🔄 In Development
