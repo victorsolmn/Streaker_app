@@ -5,6 +5,76 @@ Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracki
 
 ## Recent Updates (November 2025)
 
+### Version 1.0.18+22 - UX Improvements & Streak Logic Fix (November 25, 2025)
+
+**Release Status:** 🔄 Ready for Build
+**Key Features:** Enhanced streak visibility, hero section redesign, dynamic version display
+
+---
+
+#### Changes Implemented:
+
+**1. Streak Calculation Logic Fix** (`lib/screens/main/nutrition_home_screen.dart:286-298`)
+- **Issue**: Days without app usage showed neutral state (no indicator) in weekly calendar
+- **Solution**: Past days without data OR with unachieved goals now show strikethrough (missed)
+- **Impact**: Users can now accurately see which days they missed tracking/goals
+- **Logic Flow**:
+  ```dart
+  final wasMissed = !hasStreak && isPast && (!hasData || goalNotAchieved);
+  ```
+  - If past date AND (no data exists OR goal not achieved) → Mark as missed
+  - Neutral state reserved only for today and future dates
+
+**2. Hero Section Redesign** (`lib/screens/main/nutrition_home_screen.dart:489-559`)
+- **Previous Layout**:
+  - Left: "EATEN" with calories consumed (duplicate info)
+  - Middle: Circular progress with consumed/target calories
+  - Right: Current streak
+- **New Layout**:
+  - Left: "CURRENT STREAK" 🔥 (fire icon, orange)
+  - Middle: Circular progress (unchanged)
+  - Right: "HIGHEST STREAK" 🏆 (trophy icon, gold #FFD700)
+- **Benefits**:
+  - Eliminates redundant calorie display
+  - Shows both current AND all-time best streak
+  - Motivates users to beat personal records
+  - Gold trophy creates visual distinction
+
+**3. Dynamic App Version Display** (`lib/screens/main/profile_screen.dart:54-65, 1007`)
+- **Issue**: About dialog showed hardcoded "v1.0.0"
+- **Solution**: Implemented `package_info_plus` to auto-read from `pubspec.yaml`
+- **Display Format**: `v1.0.18+22` (version+buildNumber)
+- **Implementation**:
+  ```dart
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    setState(() {
+      _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+    });
+  }
+  ```
+- **Benefit**: Version updates automatically when `pubspec.yaml` is modified (no code changes needed)
+
+**4. Development Environment Setup**
+- Installed Java JDK 17.0.17 (Amazon Corretto)
+- Installed Flutter SDK 3.27.2 (stable)
+- Installed Android SDK 34 with command-line tools
+- Configured signing keys and environment variables
+- Cleared build cache to resolve path issues
+
+**Files Modified:**
+- `lib/screens/main/nutrition_home_screen.dart` (streak logic + hero section)
+- `lib/screens/main/profile_screen.dart` (dynamic version)
+- `pubspec.lock` (dependency updates)
+
+**Testing Recommendations:**
+- Verify missed days show strikethrough for dates without app usage
+- Check hero section displays current and highest streaks correctly
+- Confirm About dialog shows "v1.0.18+22" from pubspec.yaml
+- Test weekly calendar date selection and streak indicators
+
+---
+
 ### Version 1.0.18+22 - Interactive Workout Feature & Force Update (November 20, 2025)
 
 **Release Status:** 🔄 In Development

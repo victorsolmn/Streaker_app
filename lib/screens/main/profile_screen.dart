@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:io';
 import 'dart:async';
 import '../../providers/supabase_auth_provider.dart';
@@ -33,11 +34,13 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker _picker = ImagePicker();
   File? _profileImage;
-  
+  String _appVersion = '1.0.0';
+
 
   @override
   void initState() {
     super.initState();
+    _loadAppVersion();
     // Load actual data from Supabase
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -46,6 +49,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await userProvider.reloadUserProfile();
 
     });
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+        });
+      }
+    } catch (e) {
+      print('Error loading app version: $e');
+    }
   }
 
 
@@ -988,7 +1004,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('About Streaker'),
-        content: Text('Streaker v1.0.0\n\nYour personal fitness companion for tracking nutrition, building streaks, and achieving your health goals.\n\nBuilt with Flutter 💙'),
+        content: Text('Streaker v$_appVersion\n\nYour personal fitness companion for tracking nutrition, building streaks, and achieving your health goals.\n\nBuilt with Flutter 💙'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),

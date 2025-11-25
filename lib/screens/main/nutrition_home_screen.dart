@@ -283,11 +283,19 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
                     _isSameDay(metric.date, date) && metric.allGoalsAchieved
                   );
 
-                  // Check if this date was missed (has data but goal not achieved)
-                  // Only mark as missed if it doesn't have a streak
-                  final wasMissed = !hasStreak && streakProvider.recentMetrics.any((metric) =>
+                  // Check if this date was missed
+                  // A date is missed if:
+                  // 1. It's in the past (not today or future)
+                  // 2. AND either: no data exists for this date OR goal was not achieved
+                  final isPast = date.isBefore(today) && !isToday;
+                  final hasData = streakProvider.recentMetrics.any((metric) =>
+                    _isSameDay(metric.date, date)
+                  );
+                  final goalNotAchieved = streakProvider.recentMetrics.any((metric) =>
                     _isSameDay(metric.date, date) && !metric.allGoalsAchieved
                   );
+
+                  final wasMissed = !hasStreak && isPast && (!hasData || goalNotAchieved);
 
                   // Get streak number for this date (consecutive days up to this point)
                   int? streakNumber;
@@ -467,6 +475,7 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
         final caloriesLeft = caloriesTarget - caloriesConsumed;
         final progress = (caloriesConsumed / caloriesTarget).clamp(0.0, 1.0);
         final currentStreak = streakProvider.currentStreak;
+        final longestStreak = streakProvider.longestStreak;
 
         return Container(
           padding: EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -477,13 +486,13 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Left stat - Eaten
+              // Left stat - Current Streak
               Expanded(
                 child: _buildStatColumn(
-                  icon: Icons.restaurant,
-                  iconColor: ThemeConfig.accentColor,
-                  value: caloriesConsumed.toInt().toString(),
-                  label: 'EATEN',
+                  icon: Icons.local_fire_department,
+                  iconColor: ThemeConfig.primaryColor,
+                  value: currentStreak.toString(),
+                  label: 'CURRENT\nSTREAK',
                 ),
               ),
 
@@ -539,13 +548,13 @@ class _NutritionHomeScreenState extends State<NutritionHomeScreen> with SingleTi
                 ),
               ),
 
-              // Right stat - Current Streak
+              // Right stat - Highest Streak
               Expanded(
                 child: _buildStatColumn(
-                  icon: Icons.local_fire_department,
-                  iconColor: ThemeConfig.primaryColor,
-                  value: currentStreak.toString(),
-                  label: 'STREAK',
+                  icon: Icons.emoji_events,
+                  iconColor: Color(0xFFFFD700), // Gold color for trophy
+                  value: longestStreak.toString(),
+                  label: 'HIGHEST\nSTREAK',
                 ),
               ),
             ],

@@ -1184,6 +1184,123 @@ WHERE platform = 'android';
 
 ---
 
+### Version 1.0.18+22 - UX & Logic Improvements (November 25, 2025)
+
+**Release Date:** November 25, 2025 (Planned)
+**Build Status:** 🔄 Ready for Build
+**Key Improvements:** Streak logic fix, hero section redesign, dynamic versioning
+
+#### Hero Section Redesign (nutrition_home_screen.dart)
+
+**Previous Implementation:**
+```dart
+Left: _buildStatColumn(icon: Icons.restaurant, value: caloriesConsumed, label: 'EATEN')
+Middle: Circular progress (calories consumed/target)
+Right: _buildStatColumn(icon: Icons.local_fire_department, value: currentStreak, label: 'STREAK')
+```
+
+**New Implementation:**
+```dart
+Left: _buildStatColumn(
+  icon: Icons.local_fire_department,
+  iconColor: ThemeConfig.primaryColor,
+  value: currentStreak.toString(),
+  label: 'CURRENT\nSTREAK'
+)
+Middle: Circular progress (unchanged)
+Right: _buildStatColumn(
+  icon: Icons.emoji_events,
+  iconColor: Color(0xFFFFD700),  // Gold trophy
+  value: longestStreak.toString(),
+  label: 'HIGHEST\nSTREAK'
+)
+```
+
+**Design Rationale:**
+- Eliminates duplicate calorie information (middle section already shows consumed/target)
+- Displays both current AND all-time best streak for motivation
+- Gold trophy icon distinguishes highest streak from current streak
+- Two-line labels improve readability on small screens
+
+#### Streak Calculation Logic Fix (nutrition_home_screen.dart:286-298)
+
+**Problem:**
+Days without app usage appeared neutral (no visual indicator) in weekly calendar, creating ambiguity about whether users missed tracking or simply hadn't used the app yet.
+
+**Solution:**
+```dart
+// Old logic (incorrect)
+final wasMissed = !hasStreak && streakProvider.recentMetrics.any((metric) =>
+  _isSameDay(metric.date, date) && !metric.allGoalsAchieved
+);
+
+// New logic (correct)
+final isPast = date.isBefore(today) && !isToday;
+final hasData = streakProvider.recentMetrics.any((metric) =>
+  _isSameDay(metric.date, date)
+);
+final goalNotAchieved = streakProvider.recentMetrics.any((metric) =>
+  _isSameDay(metric.date, date) && !metric.allGoalsAchieved
+);
+final wasMissed = !hasStreak && isPast && (!hasData || goalNotAchieved);
+```
+
+**Calendar Visual States:**
+- 🔥 Fire emoji with streak number → Goal achieved
+- ❌ Strikethrough → Missed (no data OR goal not achieved)
+- ⚪ Neutral → Today or future dates only
+
+**User Impact:**
+- Clear accountability: users can see which specific days they missed
+- Motivates daily engagement to avoid strikethroughs
+- Reduces confusion about past tracking gaps
+
+#### Dynamic Version Display (profile_screen.dart)
+
+**Implementation:**
+```dart
+class _ProfileScreenState extends State<ProfileScreen> {
+  String _appVersion = '1.0.0';  // Default fallback
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppVersion();  // Auto-load on screen init
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+        });
+      }
+    } catch (e) {
+      print('Error loading app version: $e');
+    }
+  }
+
+  void _showAboutDialog() {
+    // Uses $_appVersion instead of hardcoded 'v1.0.0'
+    content: Text('Streaker v$_appVersion\n\n...')
+  }
+}
+```
+
+**Dependencies:**
+- `package_info_plus: ^4.2.0` (already in pubspec.yaml)
+
+**Benefits:**
+- Version automatically syncs with `pubspec.yaml` on every app build
+- No manual code updates required for version bumps
+- Displays full version with build number (e.g., "v1.0.18+22")
+- Graceful fallback to "1.0.0" if package info fails to load
+
+**Status:** ✅ Ready for Production
+
+---
+
 ## Development Best Practices
 
 ### Code Organization
