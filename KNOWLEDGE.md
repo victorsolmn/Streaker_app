@@ -5,6 +5,270 @@ Streaker (formerly Streaks Flutter) is a comprehensive health and fitness tracki
 
 ## Recent Updates (November 2025)
 
+### Version 1.0.20+24 - Push Notifications System (November 28, 2025)
+
+**Release Status:** ✅ Production Ready
+**Key Features:** Firebase Cloud Messaging integration, automated notifications, Supabase backend, achievement triggers
+
+---
+
+#### Push Notifications Implementation
+
+**Overview:**
+Implemented a comprehensive push notification system using Firebase Cloud Messaging (FCM) with Supabase backend integration. This enables automated notifications for streaks, achievements, goals, and custom reminders.
+
+**Automated Notification Schedule:**
+
+| Type | Trigger | Schedule/Condition |
+|------|---------|-------------------|
+| Morning Reminder | Cron Job | 9:00 AM UTC (2:30 PM IST) - Users who haven't logged meals |
+| Evening Reminder | Cron Job | 7:00 PM UTC (12:30 AM IST) - Users who still haven't logged |
+| Streak Milestones | Database Trigger | When user hits 3, 7, 14, 21, 30, 60, 90, 100, 180, 365 days |
+| First Meal | Database Trigger | When user logs their very first meal |
+
+**Edge Functions Deployed:**
+
+| Function | Purpose | Endpoint |
+|----------|---------|----------|
+| `send-notification` | Manual push notifications | `/functions/v1/send-notification` |
+| `daily-streak-reminder` | Automated daily reminders | `/functions/v1/daily-streak-reminder` |
+| `achievement-notification` | Milestone celebrations | `/functions/v1/achievement-notification` |
+
+**Database Triggers Created:**
+
+1. `trigger_streak_achievement` on `streaks` table - Fires when current_streak reaches milestone
+2. `trigger_first_meal` on `nutrition_entries` table - Fires on first meal insertion
+
+**Streak Milestone Messages:**
+
+| Days | Title |
+|------|-------|
+| 3 | 🎉 3-Day Streak Unlocked! |
+| 7 | 🔥 1-Week Champion! |
+| 14 | ⭐ 2-Week Warrior! |
+| 21 | 🏆 21-Day Legend! |
+| 30 | 👑 30-Day Royalty! |
+| 60 | 💎 60-Day Diamond! |
+| 90 | 🌟 90-Day Superstar! |
+| 100 | 💯 100-Day Century! |
+| 180 | 🚀 180-Day Rocket! |
+| 365 | 🏅 365-Day LEGEND! |
+
+**Architecture Components:**
+
+**1. NotificationService** (`lib/services/notification_service.dart`)
+- Singleton service managing all FCM operations
+- Handles foreground, background, and terminated app states
+- **Key Features**:
+  - Automatic FCM token registration and refresh
+  - Multi-channel Android notifications (streaks, achievements, goals, general)
+  - iOS APNs integration with background mode support
+  - Token storage in Supabase user_devices table
+  - Deep linking for notification navigation
+  - Local notifications for foreground message display
+
+**Implementation Details:**
+```dart
+// Initialize in main.dart
+await NotificationService().initialize();
+
+// Service handles:
+- FCM token generation and refresh
+- Permission requests (iOS & Android 13+)
+- Background message handler registration
+- Channel creation (Android)
+- Token persistence to Supabase
+```
+
+**2. Android Configuration** (`android/app/src/main/AndroidManifest.xml`)
+- Added `POST_NOTIFICATIONS` permission (Android 13+)
+- Configured FCM default channel: `streaks_channel`
+- Set notification icon and color metadata
+- **Notification Channels**:
+  - `streaks_channel` - High priority for daily reminders
+  - `achievements_channel` - Max priority for milestone celebrations
+  - `goals_channel` - High priority for goal updates
+  - `general_channel` - Default priority for general updates
+
+**3. iOS Configuration**
+- **Info.plist** (`ios/Runner/Info.plist`):
+  - Added `UIBackgroundModes`: `fetch`, `remote-notification`
+  - Disabled Firebase proxy: `FirebaseAppDelegateProxyEnabled = false`
+- **AppDelegate.swift** (`ios/Runner/AppDelegate.swift`):
+  - Manual Firebase configuration
+  - FCM MessagingDelegate implementation
+  - APNs token handling
+  - Notification authorization requests
+
+**4. Supabase Database Schema** (`supabase/migrations/create_user_devices_table.sql`)
+```sql
+CREATE TABLE user_devices (
+  id UUID PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id),
+  fcm_token TEXT NOT NULL,
+  platform TEXT CHECK (platform IN ('ios', 'android')),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ,
+  UNIQUE(user_id, fcm_token)
+);
+```
+- **Features**:
+  - Row-level security (RLS) policies
+  - Automatic `updated_at` trigger
+  - Indexed for performance
+  - Tracks active/inactive devices per user
+
+**5. Supabase Edge Function** (`supabase/functions/send-notification/index.ts`)
+- TypeScript serverless function for sending notifications
+- **Capabilities**:
+  - Send to specific user IDs
+  - Send to topic subscribers (broadcast)
+  - Batch processing (up to 1000 devices)
+  - Invalid token cleanup
+  - Success/failure tracking
+- **Environment Variables Required**:
+  - `FCM_SERVER_KEY` - Firebase Server Key from Firebase Console
+  - `SUPABASE_URL` - Auto-provided by Supabase
+  - `SUPABASE_SERVICE_ROLE_KEY` - Auto-provided by Supabase
+
+**Example API Call:**
+```typescript
+POST https://[project-ref].supabase.co/functions/v1/send-notification
+Headers:
+  Authorization: Bearer [SUPABASE_ANON_KEY]
+  Content-Type: application/json
+
+Body:
+{
+  "user_ids": ["uuid-1", "uuid-2"],
+  "title": "🔥 Keep your streak alive!",
+  "body": "You haven't logged your meals today.",
+  "type": "streak",
+  "screen": "nutrition"
+}
+```
+
+**Notification Types:**
+1. **Streak Reminders** (`type: "streak"`)
+   - Daily reminders to maintain streaks
+   - Alerts for potential streak breaks
+   - Channel: `streaks_channel` (High priority)
+
+2. **Achievement Notifications** (`type: "achievement"`)
+   - Unlock celebrations
+   - Milestone reached alerts
+   - Channel: `achievements_channel` (Max priority)
+
+3. **Goal Progress** (`type: "goal"`)
+   - Goal completion alerts
+   - Progress updates
+   - Channel: `goals_channel` (High priority)
+
+4. **General Updates** (`type: "general"`)
+   - App updates
+   - General announcements
+   - Channel: `general_channel` (Default priority)
+
+**Setup Instructions:**
+
+**Step 1: Run Supabase Migration**
+```sql
+-- Execute in Supabase Dashboard > SQL Editor
+-- Copy contents of: supabase/migrations/create_user_devices_table.sql
+```
+
+**Step 2: Deploy Edge Function**
+```bash
+# Install Supabase CLI if not already installed
+npm install -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link to your project
+supabase link --project-ref [your-project-ref]
+
+# Deploy the function
+supabase functions deploy send-notification
+
+# Set FCM Server Key environment variable
+supabase secrets set FCM_SERVER_KEY=[your-firebase-server-key]
+```
+
+**Step 3: Get Firebase Server Key**
+1. Go to Firebase Console > Project Settings
+2. Navigate to Cloud Messaging tab
+3. Under "Cloud Messaging API (Legacy)", copy the Server Key
+4. Add as `FCM_SERVER_KEY` in Supabase Edge Functions environment
+
+**Step 4: Enable Push Notifications in Xcode (iOS)**
+1. Open `ios/Runner.xcworkspace` in Xcode
+2. Select Runner target > Signing & Capabilities
+3. Click "+ Capability" > Add "Push Notifications"
+4. Click "+ Capability" > Add "Background Modes"
+5. Check "Remote notifications" under Background Modes
+
+**Testing the Implementation:**
+
+**1. Test FCM Token Registration:**
+```dart
+// Check logs on app launch
+✅ FCM Token: [device-specific-token]
+✅ FCM token saved to Supabase
+```
+
+**2. Test from Firebase Console:**
+- Go to Firebase Console > Cloud Messaging
+- Click "Send your first message"
+- Enter title/body, select app
+- Send test notification
+
+**3. Test from Supabase Edge Function:**
+```bash
+curl -X POST https://[project-ref].supabase.co/functions/v1/send-notification \
+  -H "Authorization: Bearer [anon-key]" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_ids": ["your-user-uuid"],
+    "title": "Test Notification",
+    "body": "This is a test",
+    "type": "general"
+  }'
+```
+
+**Files Added:**
+- `lib/services/notification_service.dart` (422 lines)
+- `supabase/migrations/create_user_devices_table.sql` (70 lines)
+- `supabase/functions/send-notification/index.ts` (215 lines)
+
+**Files Modified:**
+- `pubspec.yaml` - Added firebase_messaging, flutter_local_notifications
+- `lib/main.dart` - Initialized NotificationService
+- `android/app/src/main/AndroidManifest.xml` - Added FCM permissions and metadata
+- `ios/Runner/Info.plist` - Added background modes
+- `ios/Runner/AppDelegate.swift` - Added FCM delegates
+
+**Dependencies Added:**
+- `firebase_messaging: ^14.7.10`
+- `flutter_local_notifications: ^17.0.0`
+
+**Future Enhancements:**
+1. Scheduled notifications (daily reminders at specific times)
+2. Smart notification timing based on user activity patterns
+3. Notification preferences in settings
+4. A/B testing different notification copy
+5. Analytics on notification engagement rates
+6. Integration with streak_provider for automatic streak alerts
+
+**Security Considerations:**
+- RLS policies ensure users only access their own device tokens
+- FCM tokens are automatically cleaned up when invalid
+- Server key stored securely in Supabase environment variables
+- No sensitive data transmitted in notification payloads
+
+---
+
 ### Version 1.0.18+22 - UX Improvements & Streak Logic Fix (November 25, 2025)
 
 **Release Status:** 🔄 Ready for Build

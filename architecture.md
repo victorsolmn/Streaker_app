@@ -1068,6 +1068,298 @@ build/app/outputs/bundle/release/app-release.aab
 
 ## Recent Critical Updates (November 2025)
 
+### Version 1.0.20+24 - Push Notifications System (November 28, 2025)
+
+**Release Status:** 🔄 Ready for Testing
+**Build Status:** Implementation Complete
+
+#### Push Notification Architecture
+
+**System Design:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Push Notification Flow                  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   App Launch                                                │
+│       │                                                      │
+│       ├─> NotificationService.initialize()                  │
+│       │      ├─> Request permissions (iOS/Android 13+)      │
+│       │      ├─> Get FCM token from Firebase                │
+│       │      ├─> Save token to Supabase user_devices table  │
+│       │      └─> Setup message listeners                    │
+│       │                                                      │
+│   ┌───▼──────────────────────────────────────┐             │
+│   │     Firebase Cloud Messaging (FCM)        │             │
+│   │   ┌────────────────────────────────────┐ │             │
+│   │   │ Foreground: Show local notification │ │             │
+│   │   │ Background: Auto-display by system  │ │             │
+│   │   │ Terminated: Click opens app         │ │             │
+│   │   └────────────────────────────────────┘ │             │
+│   └──────────────┬────────────────────────────┘             │
+│                  │                                           │
+│   ┌──────────────▼──────────────────────────┐              │
+│   │    Supabase Edge Function                │              │
+│   │    (send-notification)                   │              │
+│   │  ┌────────────────────────────────────┐ │              │
+│   │  │ Query user_devices table           │ │              │
+│   │  │ Get FCM tokens for target users    │ │              │
+│   │  │ Send notifications via FCM API     │ │              │
+│   │  │ Clean up invalid tokens            │ │              │
+│   │  └────────────────────────────────────┘ │              │
+│   └─────────────────────────────────────────┘              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Notification Service Components:**
+
+**1. NotificationService (`lib/services/notification_service.dart`)**
+- Singleton pattern for app-wide access
+- Manages FCM lifecycle (token generation, refresh, deletion)
+- Handles three app states:
+  - **Foreground**: Shows local notification via flutter_local_notifications
+  - **Background**: Background handler processes message
+  - **Terminated**: Initial message retrieved on app launch
+- Multi-channel support for Android (streaks, achievements, goals, general)
+- iOS integration with APNs (Apple Push Notification service)
+- Automatic token persistence to Supabase
+
+**Key Methods:**
+```dart
+// Initialize service (called in main.dart)
+await NotificationService().initialize()
+
+// Subscribe to topic for broadcast notifications
+await NotificationService().subscribeToTopic('daily_reminders')
+
+// Get current FCM token
+String? token = NotificationService().fcmToken
+
+// Clean up on logout
+await NotificationService().deleteFCMToken()
+```
+
+**2. Android Notification Channels**
+| Channel ID | Priority | Use Case |
+|------------|----------|----------|
+| streaks_channel | High | Daily streak reminders |
+| achievements_channel | Max | Achievement unlocks |
+| goals_channel | High | Goal completion alerts |
+| general_channel | Default | App updates, announcements |
+
+**3. Database Schema (`user_devices` table)**
+```sql
+CREATE TABLE user_devices (
+  id UUID PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id),
+  fcm_token TEXT NOT NULL,
+  platform TEXT CHECK (platform IN ('ios', 'android')),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, fcm_token)
+);
+```
+
+**RLS Policies:**
+- Users can only read/write their own device tokens
+- Service role has full access for Edge Function
+- Automatic cleanup of invalid tokens
+
+**4. Supabase Edge Function Architecture**
+
+**Function:** `send-notification`
+**Runtime:** Deno (TypeScript)
+**Endpoint:** `POST https://[project-ref].supabase.co/functions/v1/send-notification`
+
+**Request Format:**
+```typescript
+{
+  user_ids?: string[],      // Target specific users
+  topic?: string,            // Or broadcast to topic
+  title: string,             // Notification title
+  body: string,              // Notification body
+  type: 'streak' | 'achievement' | 'goal' | 'general',
+  screen?: string,           // Deep link screen
+  data?: Record<string, any> // Custom payload
+}
+```
+
+**Response Format:**
+```typescript
+{
+  success: boolean,
+  successCount: number,
+  failureCount: number,
+  totalTokens: number,
+  results: Array<{...}>
+}
+```
+
+**Features:**
+- Batch sending (up to 1000 devices per batch)
+- Invalid token cleanup (automatic database deletion)
+- Topic-based broadcasting for all users
+- Custom data payload for deep linking
+- Success/failure tracking per message
+
+**5. Platform-Specific Configuration**
+
+**Android (`android/app/src/main/AndroidManifest.xml`):**
+```xml
+<!-- Permission for Android 13+ -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+<!-- FCM metadata -->
+<meta-data
+    android:name="com.google.firebase.messaging.default_notification_channel_id"
+    android:value="streaks_channel" />
+<meta-data
+    android:name="com.google.firebase.messaging.default_notification_icon"
+    android:resource="@mipmap/ic_launcher" />
+```
+
+**iOS (`ios/Runner/Info.plist`):**
+```xml
+<key>UIBackgroundModes</key>
+<array>
+    <string>fetch</string>
+    <string>remote-notification</string>
+</array>
+<key>FirebaseAppDelegateProxyEnabled</key>
+<false/>
+```
+
+**iOS (`ios/Runner/AppDelegate.swift`):**
+- Manual Firebase configuration
+- FCM MessagingDelegate implementation
+- APNs token registration
+- Authorization requests
+
+**6. Notification Use Cases**
+
+**Daily Streak Reminder:**
+```dart
+POST /send-notification
+{
+  "user_ids": ["user-uuid"],
+  "title": "🔥 Keep your streak alive!",
+  "body": "You haven't logged your meals today. Don't break your 7-day streak!",
+  "type": "streak",
+  "screen": "nutrition"
+}
+```
+
+**Achievement Unlocked:**
+```dart
+POST /send-notification
+{
+  "user_ids": ["user-uuid"],
+  "title": "🏆 Achievement Unlocked!",
+  "body": "You've completed 30 consecutive days! Keep crushing it!",
+  "type": "achievement",
+  "screen": "achievements"
+}
+```
+
+**Broadcast to All Users:**
+```dart
+POST /send-notification
+{
+  "topic": "all_users",
+  "title": "🎉 New Feature Alert!",
+  "body": "Check out our new AI-powered workout generator!",
+  "type": "general",
+  "screen": "home"
+}
+```
+
+**Security Considerations:**
+1. **Token Security:**
+   - FCM tokens stored with RLS policies
+   - Only user can access their own tokens
+   - Tokens automatically invalidated on logout
+
+2. **Edge Function Authentication:**
+   - Requires Supabase anon key (can be called from app)
+   - Or service role key (for server-side automation)
+   - Rate limiting applied by Supabase
+
+3. **Payload Security:**
+   - No sensitive data in notification payload
+   - User data fetched from database on app open
+   - Deep links validated before navigation
+
+**Future Automation Opportunities:**
+1. **Scheduled Daily Reminders:**
+   - Trigger Edge Function via Supabase cron jobs
+   - Send reminders at user's preferred time
+   - Query users who haven't logged meals today
+
+2. **Streak Alerts:**
+   - Detect streak breaks via database trigger
+   - Auto-send recovery notifications
+   - Motivational messages based on streak length
+
+3. **Achievement Triggers:**
+   - Database trigger on achievement unlock
+   - Instant celebration notification
+   - Share prompt for social features
+
+4. **Smart Timing:**
+   - Analyze user activity patterns
+   - Send notifications at optimal engagement times
+   - A/B test notification copy and timing
+
+**Dependencies:**
+- `firebase_messaging: ^14.7.10`
+- `flutter_local_notifications: ^17.0.0`
+- Firebase Cloud Messaging Console
+- Supabase Edge Functions (Deno runtime)
+
+**Files Modified/Created:**
+- `lib/services/notification_service.dart` (NEW - 422 lines)
+- `supabase/migrations/create_user_devices_table.sql` (NEW - 70 lines)
+- `supabase/functions/send-notification/index.ts` (NEW - 215 lines)
+- `supabase/functions/daily-streak-reminder/index.ts` (NEW - 280 lines)
+- `supabase/functions/achievement-notification/index.ts` (NEW - 250 lines)
+- `lib/main.dart` (MODIFIED - Added NotificationService initialization)
+- `lib/providers/supabase_auth_provider.dart` (MODIFIED - FCM token registration on login)
+- `android/app/src/main/AndroidManifest.xml` (MODIFIED - FCM config)
+- `ios/Runner/Info.plist` (MODIFIED - Background modes)
+- `ios/Runner/AppDelegate.swift` (MODIFIED - FCM delegates)
+
+**Automated Notification System:**
+
+The notification system is now fully automated with the following components:
+
+1. **Cron Jobs (Supabase Scheduled Functions):**
+   - `daily-streak-reminder-morning`: Runs at 9:00 AM UTC daily
+   - `daily-streak-reminder-evening`: Runs at 7:00 PM UTC daily
+   - Both check for users who haven't logged meals and send personalized reminders
+
+2. **Database Triggers:**
+   - `trigger_streak_achievement` on `streaks` table: Fires when `current_streak` reaches milestones (3, 7, 14, 21, 30, 60, 90, 100, 180, 365)
+   - `trigger_first_meal` on `nutrition_entries` table: Fires on first meal insertion for new users
+
+3. **Firebase Service Account:**
+   - Uses FCM V1 API with OAuth2 authentication
+   - Service account stored as Supabase secret: `FIREBASE_SERVICE_ACCOUNT`
+   - Project ID: `streaker-342ad`
+
+**API Endpoints:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/functions/v1/send-notification` | POST | Manual notifications to specific users |
+| `/functions/v1/daily-streak-reminder` | POST | Trigger daily reminder check |
+| `/functions/v1/achievement-notification` | POST | Send achievement celebration |
+
+**Status:** ✅ Production Ready - All triggers and cron jobs active
+
+---
+
 ### Version 1.0.17+21 - Production Release
 
 **Release Date:** November 19, 2025

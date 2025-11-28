@@ -1,7 +1,7 @@
 name: streaker_flutter
 description: A Streaker fitness tracking app built with Flutter.
 publish_to: 'none'
-version: 1.0.18+22
+version: 1.0.19+23
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -35,9 +35,8 @@ dependencies:
   supabase: ^2.9.1
   # firebase_crashlytics: ^3.4.9  # Temporarily disabled due to iOS build issue
   # firebase_performance: ^0.9.3  # Temporarily disabled due to iOS build issue
-  # Skip messaging for web compatibility for now
-  # firebase_messaging: ^14.7.10
-  # flutter_local_notifications: ^16.3.0
+  firebase_messaging: ^14.7.10
+  flutter_local_notifications: ^17.0.0
   app_settings: ^5.1.1
   # Workout feature packages
   confetti: ^0.7.0

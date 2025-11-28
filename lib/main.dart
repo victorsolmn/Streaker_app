@@ -13,6 +13,7 @@ import 'services/daily_reset_service.dart';
 import 'services/permission_flow_manager.dart';
 import 'services/database_sync_service.dart';
 import 'services/secure_storage_service.dart';
+import 'services/notification_service.dart';
 import 'config/api_config.dart';
 // Using Supabase providers for cloud storage
 import 'providers/supabase_auth_provider.dart';
@@ -66,10 +67,19 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    
+
     // Initialize Firebase services
     FirebaseAnalyticsService().initialize();
-    
+
+    // Initialize Push Notifications
+    try {
+      await NotificationService().initialize();
+      debugPrint('✅ Notification service initialized');
+    } catch (e) {
+      debugPrint('⚠️ Notification service initialization failed: $e');
+      // App can still run without notifications
+    }
+
     // Set up Crashlytics (only for non-web platforms)
     // Temporarily disabled due to iOS build issue
     // if (!kIsWeb) {
@@ -79,7 +89,7 @@ void main() async {
     //     return true;
     //   };
     // }
-    
+
     debugPrint('✅ Firebase initialized successfully'); // Debug reload updated
   } catch (e) {
     debugPrint('Firebase initialization error: $e');

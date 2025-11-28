@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
+import '../services/notification_service.dart';
 
 class SupabaseAuthProvider with ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
@@ -80,6 +81,9 @@ class SupabaseAuthProvider with ChangeNotifier {
         // Ensure user profile exists (in case database trigger failed)
         await _ensureUserProfileExists(response.user!);
 
+        // Register FCM token for push notifications
+        await NotificationService().registerTokenAfterLogin();
+
         _setLoading(false);
         return true;
       } else {
@@ -124,6 +128,9 @@ class SupabaseAuthProvider with ChangeNotifier {
 
         // Check if user profile exists, create if not
         await _ensureUserProfileExists(response.user!);
+
+        // Register FCM token for push notifications
+        await NotificationService().registerTokenAfterLogin();
 
         _setLoading(false);
         return true;
@@ -213,14 +220,17 @@ class SupabaseAuthProvider with ChangeNotifier {
       
       if (response.user != null) {
         _currentUser = response.user;
-        
+
         // If name is provided (signup), update user profile
         if (name != null && name.isNotEmpty) {
           await _supabaseService.client.auth.updateUser(
             UserAttributes(data: {'name': name}),
           );
         }
-        
+
+        // Register FCM token for push notifications
+        await NotificationService().registerTokenAfterLogin();
+
         _setLoading(false);
         notifyListeners();
         return true;
@@ -324,6 +334,9 @@ class SupabaseAuthProvider with ChangeNotifier {
 
         // Ensure user profile exists
         await _ensureUserProfileExists(_currentUser!);
+
+        // Register FCM token for push notifications
+        await NotificationService().registerTokenAfterLogin();
 
         _setLoading(false);
         return true;

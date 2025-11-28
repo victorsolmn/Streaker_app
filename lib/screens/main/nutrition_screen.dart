@@ -735,7 +735,7 @@ class _NutritionScreenState extends State<NutritionScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Meal Description',
+                            'Add description with quantity for more accurate results',
                             style: TextStyle(
                               color: AppTheme.primaryAccent,
                               fontWeight: FontWeight.w600,
