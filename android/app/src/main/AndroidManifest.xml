@@ -1,27 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     
-    <!-- Bluetooth, Location, and Samsung Health permissions REMOVED - Not used by app -->
-    <!-- App uses Health Connect instead of Samsung Health -->
-    <!-- No Bluetooth or Location features in this app -->
+    <!-- Permissions REMOVED - Not used by this app -->
+    <!-- - Bluetooth (5 permissions): App does not use Bluetooth devices -->
+    <!-- - Location (2 permissions): App does not use GPS/location services -->
+    <!-- - Samsung Health (2 permissions): Not using Samsung Health SDK -->
+    <!-- - Health Connect (13 permissions): App does NOT sync with Health Connect -->
+    <!-- - Activity Recognition: App does not track steps/activity -->
     
-    <!-- Health Connect permissions -->
-    <uses-permission android:name="android.permission.health.READ_STEPS"/>
-    <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
-    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE"/>
-    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
-    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED"/>
-    <uses-permission android:name="android.permission.health.READ_DISTANCE"/>
-    <uses-permission android:name="android.permission.health.READ_SLEEP"/>
-    <uses-permission android:name="android.permission.health.READ_HYDRATION"/>
-    <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
-    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION"/>
-    <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE"/>
-    <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
-    <uses-permission android:name="android.permission.health.READ_BASAL_METABOLIC_RATE"/>
-    
-    <!-- Activity recognition for steps counter -->
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
+    <!-- This app only uses: -->
+    <!-- - Manual nutrition tracking (user enters data + AI photo analysis) -->
+    <!-- - Manual weight tracking (user enters weight) -->
+    <!-- - AI chat assistant -->
+    <!-- - E-commerce (WhatsApp redirect) -->
+    <!-- No automatic health data syncing from wearables or health apps -->
 
     <!-- Camera permission for nutrition photo capture -->
     <uses-permission android:name="android.permission.CAMERA"/>
@@ -77,28 +69,7 @@
             </intent-filter>
         </activity>
         
-        <!-- Health Connect integration -->
-        <activity-alias
-            android:name="ViewPermissionUsageActivity"
-            android:exported="true"
-            android:targetActivity=".MainActivity"
-            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
-                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
-            </intent-filter>
-        </activity-alias>
-        
-        <!-- Health Connect permission rationale activity -->
-        <activity-alias
-            android:name="HealthConnectPermissionActivity"
-            android:exported="true"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity-alias>
+        <!-- Health Connect integration REMOVED - App does not use Health Connect -->
         
         <!-- Disable Firebase Analytics advertising ID collection -->
         <meta-data
@@ -142,10 +113,6 @@
             <data android:mimeType="text/plain"/>
         </intent>
         
-        <!-- Health Connect queries -->
-        <package android:name="com.google.android.apps.healthdata" />
-        <intent>
-            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
-        </intent>
+        <!-- Health Connect queries REMOVED - App does not use Health Connect -->
     </queries>
 </manifest>

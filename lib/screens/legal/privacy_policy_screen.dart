@@ -105,16 +105,23 @@ class PrivacyPolicyScreen extends StatelessWidget {
               '6.1 Data Safety Declaration',
               'COLLECTED DATA:\n'
               '• Personal Info: Email address, name, profile photo\n'
-              '• Health & Fitness: Steps, heart rate, calories, sleep, weight, workouts\n'
-              '• Photos: Meal photos for nutrition analysis only\n'
+              '• Nutrition Data: Meal photos, calories, macronutrients (protein, fat, carbs)\n'
+              '• Weight Data: Weight entries (manually entered by you)\n'
+              '• Chat Data: AI assistant conversations\n'
               '• Usage Data: App interactions, feature usage (anonymized)\n\n'
+              'IMPORTANT: This app does NOT automatically sync with:\n'
+              '• Health Connect or fitness trackers\n'
+              '• Step counters or activity monitors\n'
+              '• Heart rate or sleep tracking devices\n'
+              'All health data is MANUALLY ENTERED by you.\n\n'
               'DATA SHARING:\n'
               '• Supabase: Securely stores all your data (encrypted)\n'
-              '• Google AI: Analyzes meal photos (not permanently stored)\n'
-              '• Firebase: Anonymized analytics only\n\n'
+              '• Google AI: Analyzes meal photos for nutrition estimation (not permanently stored)\n'
+              '• Firebase: Anonymized analytics only\n'
+              '• WhatsApp: E-commerce inquiries only (when you choose to contact)\n\n'
               'DATA SECURITY:\n'
               '• All data encrypted in transit (HTTPS/TLS)\n'
-              '• Health data encrypted at rest\n'
+              '• User data encrypted at rest\n'
               '• You can delete all data anytime\n'
               '• We NEVER sell your personal information\n'
               '• We do NOT use data for advertising',
@@ -124,9 +131,10 @@ class PrivacyPolicyScreen extends StatelessWidget {
               context,
               '6.2 Why We Need Permissions',
               'CAMERA: Take photos of meals for AI nutrition analysis\n'
-              'HEALTH DATA: Sync steps, heart rate, sleep from Health Connect\n'
-              'NOTIFICATIONS: Send streak reminders and achievement alerts\n'
+              'NOTIFICATIONS: Send streak reminders and daily check-in alerts\n'
               'STORAGE: Save meal photos temporarily during analysis\n\n'
+              'NOTE: We do NOT request Health Connect, step counter, or fitness tracker permissions.\n'
+              'All nutrition and weight data is manually entered by you.\n\n'
               'All permissions can be revoked anytime in device Settings.',
             ),
 
