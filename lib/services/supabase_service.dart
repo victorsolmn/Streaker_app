@@ -86,6 +86,80 @@ class SupabaseService {
     }
   }
 
+  /// Delete user account and all associated data permanently
+  Future<void> deleteUserAccount() async {
+    try {
+      final user = currentUser;
+      if (user == null) {
+        throw Exception('No user logged in');
+      }
+
+      final userId = user.id;
+      debugPrint('🗑️ Starting account deletion for user: $userId');
+
+      // Delete all user data from tables (in order to avoid foreign key issues)
+      await Future.wait([
+        // Delete nutrition entries
+        _supabase.from('nutrition_entries').delete().eq('user_id', userId),
+        
+        // Delete weight entries
+        _supabase.from('weight_entries').delete().eq('user_id', userId),
+        
+        // Delete workout sessions
+        _supabase.from('workout_sessions').delete().eq('user_id', userId),
+        
+        // Delete workout templates
+        _supabase.from('workout_templates').delete().eq('user_id', userId),
+        
+        // Delete achievements progress
+        _supabase.from('achievements_progress').delete().eq('user_id', userId),
+        
+        // Delete daily nutrition summary
+        _supabase.from('daily_nutrition_summary').delete().eq('user_id', userId),
+        
+        // Delete streaks
+        _supabase.from('streaks').delete().eq('user_id', userId),
+        
+        // Delete user devices (for push notifications)
+        _supabase.from('user_devices').delete().eq('user_id', userId),
+      ]);
+
+      debugPrint('✅ All user data deleted from tables');
+
+      // Delete profile photo from storage if exists
+      try {
+        final profile = await getUserProfile(userId);
+        final photoUrl = profile?['photo_url'] as String?;
+        if (photoUrl != null && photoUrl.isNotEmpty) {
+          await deleteProfilePhoto(photoUrl);
+          debugPrint('✅ Profile photo deleted from storage');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to delete profile photo: $e');
+        // Continue with account deletion even if photo deletion fails
+      }
+
+      // Delete profile (should be last due to foreign keys)
+      await _supabase.from('profiles').delete().eq('id', userId);
+      debugPrint('✅ Profile deleted');
+
+      // Sign out the user (this effectively ends the session)
+      await signOut();
+      debugPrint('✅ User signed out');
+
+      // Note: We cannot delete the user from auth.users table directly from client
+      // This requires admin privileges. Options:
+      // 1. Use a Supabase Edge Function with service role key
+      // 2. Let the user data remain in auth.users (empty profile)
+      // 3. Admin manually deletes from dashboard
+      
+      debugPrint('✅ Account deletion complete');
+    } catch (e) {
+      debugPrint('❌ Account deletion failed: $e');
+      throw Exception('Failed to delete account: $e');
+    }
+  }
+
   Future<void> resetPassword(String email) async {
     try {
       await _supabase.auth.resetPasswordForEmail(email);

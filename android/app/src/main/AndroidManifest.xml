@@ -1,20 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     
-    <!-- Bluetooth permissions for device discovery and connection -->
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    
-    <!-- Location permissions required for Bluetooth scanning on Android -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    
-    <!-- Samsung Health permissions -->
-    <uses-permission android:name="com.samsung.android.providers.health.permission.READ" />
-    <uses-permission android:name="com.samsung.android.providers.health.permission.WRITE" />
+    <!-- Bluetooth, Location, and Samsung Health permissions REMOVED - Not used by app -->
+    <!-- App uses Health Connect instead of Samsung Health -->
+    <!-- No Bluetooth or Location features in this app -->
     
     <!-- Health Connect permissions -->
     <uses-permission android:name="android.permission.health.READ_STEPS"/>
@@ -55,7 +44,8 @@
     <application
         android:label="streaker"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"

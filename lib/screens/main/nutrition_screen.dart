@@ -9,6 +9,7 @@ import '../../services/popup_service.dart';
 import '../../utils/app_theme.dart';
 import '../../widgets/nutrition_card.dart';
 import '../../widgets/nutrition_entry_card_enhanced.dart';
+import '../../widgets/permission_rationale_dialog.dart';
 
 class NutritionScreen extends StatefulWidget {
   const NutritionScreen({Key? key}) : super(key: key);
@@ -44,6 +45,36 @@ class _NutritionScreenState extends State<NutritionScreen>
       setState(() {
         _isScanning = true;
       });
+
+      // Check if permission is already granted
+      final currentStatus = await Permission.camera.status;
+      
+      if (currentStatus.isDenied || currentStatus.isPermanentlyDenied) {
+        // Show rationale before requesting permission
+        final shouldProceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => PermissionRationaleDialog(
+            title: 'Camera Access',
+            icon: Icons.camera_alt,
+            reasons: [
+              'Take photos of your meals',
+              'Analyze food content using AI',
+              'Get accurate nutrition estimates',
+              'Track your eating habits visually',
+            ],
+            optionalNote: 'You can always manually enter nutrition data if you prefer not to use the camera.',
+            onContinue: () => Navigator.pop(context, true),
+            onCancel: () => Navigator.pop(context, false),
+          ),
+        );
+
+        if (shouldProceed != true) {
+          setState(() {
+            _isScanning = false;
+          });
+          return;
+        }
+      }
 
       // Request camera permission
       final cameraStatus = await Permission.camera.request();

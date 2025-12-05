@@ -94,9 +94,40 @@ class PrivacyPolicyScreen extends StatelessWidget {
               '6. Third-Party Services',
               'We work with trusted third-party services:\n\n'
               '• Supabase for secure data storage and authentication\n'
-              '• Google AI for nutrition analysis from meal photos\n'
-              '• Analytics services to improve app performance\n\n'
+              '• Google AI (Gemini) for nutrition analysis from meal photos\n'
+              '• Firebase Analytics for anonymized usage statistics\n'
+              '• Firebase Cloud Messaging for push notifications\n\n'
               'These services are bound by strict privacy agreements and cannot use your data for their own purposes.',
+            ),
+
+            _buildSection(
+              context,
+              '6.1 Data Safety Declaration',
+              'COLLECTED DATA:\n'
+              '• Personal Info: Email address, name, profile photo\n'
+              '• Health & Fitness: Steps, heart rate, calories, sleep, weight, workouts\n'
+              '• Photos: Meal photos for nutrition analysis only\n'
+              '• Usage Data: App interactions, feature usage (anonymized)\n\n'
+              'DATA SHARING:\n'
+              '• Supabase: Securely stores all your data (encrypted)\n'
+              '• Google AI: Analyzes meal photos (not permanently stored)\n'
+              '• Firebase: Anonymized analytics only\n\n'
+              'DATA SECURITY:\n'
+              '• All data encrypted in transit (HTTPS/TLS)\n'
+              '• Health data encrypted at rest\n'
+              '• You can delete all data anytime\n'
+              '• We NEVER sell your personal information\n'
+              '• We do NOT use data for advertising',
+            ),
+
+            _buildSection(
+              context,
+              '6.2 Why We Need Permissions',
+              'CAMERA: Take photos of meals for AI nutrition analysis\n'
+              'HEALTH DATA: Sync steps, heart rate, sleep from Health Connect\n'
+              'NOTIFICATIONS: Send streak reminders and achievement alerts\n'
+              'STORAGE: Save meal photos temporarily during analysis\n\n'
+              'All permissions can be revoked anytime in device Settings.',
             ),
 
             _buildSection(
@@ -114,15 +145,18 @@ class PrivacyPolicyScreen extends StatelessWidget {
               context,
               '7.1 Account Deletion',
               'You have the right to delete your account and all associated data at any time.\n\n'
-              'To request account deletion:\n'
-              '• Email us at: privacy@streaker.app\n'
-              '• Include "Account Deletion Request" in the subject line\n'
-              '• Provide your registered email address\n\n'
-              'Upon receiving your request:\n'
-              '• We will verify your identity\n'
-              '• Your account and all associated data will be permanently deleted within 7 days\n'
-              '• You will receive a confirmation email once deletion is complete\n\n'
-              'Please note that account deletion is irreversible and you will lose access to all your health data, nutrition history, achievements, and streak progress.',
+              'To delete your account:\n'
+              '• Go to Profile > Settings > Delete Account\n'
+              '• Confirm your decision in the dialog\n'
+              '• Your account will be permanently deleted immediately\n\n'
+              'What gets deleted:\n'
+              '• Your profile and account credentials\n'
+              '• All health and fitness data\n'
+              '• Nutrition history and meal photos\n'
+              '• Workout logs and templates\n'
+              '• Achievements and streak progress\n'
+              '• Premium membership (no refunds)\n\n'
+              'Please note that account deletion is irreversible. You can also contact us at novatrient@gmail.com for assistance.',
             ),
 
             _buildSection(
@@ -141,8 +175,8 @@ class PrivacyPolicyScreen extends StatelessWidget {
               context,
               '10. Contact Information',
               'If you have any questions about this privacy policy or our privacy practices, please contact us:\n\n'
-              'Email: privacy@streaker.app\n'
-              'Address: [Your Business Address]\n\n'
+              'Email: novatrient@gmail.com\n'
+              'Address: Bangalore, India\n\n'
               'We are committed to protecting your privacy and will respond to your inquiries promptly.',
             ),
 

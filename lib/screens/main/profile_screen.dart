@@ -22,7 +22,9 @@ import 'edit_profile_screen.dart';
 import 'help_screen.dart';
 import 'main_screen.dart';
 import '../../services/supabase_service.dart';
+import '../../services/data_export_service.dart';
 import '../../widgets/fitness_goals_card.dart';
+import '../../widgets/delete_account_dialog.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -557,10 +559,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () {},
           ),
           _buildSettingItem(
-            icon: Icons.backup_outlined,
-            title: 'Data Export',
-            subtitle: 'Export your fitness data',
-            onTap: () => _showDataExportDialog(),
+            icon: Icons.download,
+            title: 'Export My Data',
+            subtitle: 'Download all your data (GDPR)',
+            onTap: () => _exportUserData(),
           ),
           _buildSettingItem(
             icon: Icons.help_outline,
@@ -590,6 +592,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () => _showAboutDialog(),
           ),
           SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showDeleteAccountDialog(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.errorRed,
+                side: const BorderSide(color: AppTheme.errorRed),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: Icon(Icons.delete_forever),
+              label: Text(
+                'Delete Account',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
@@ -975,17 +997,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showDataExportDialog() {
-    showDialog(
+  Future<void> _exportUserData() async {
+    // Show confirmation dialog first
+    final shouldExport = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Data Export'),
-        content: Text('Data export functionality will be added in a future update.'),
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: AppTheme.primaryAccent),
+            SizedBox(width: 8),
+            Text('Export Your Data'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('This will create a JSON file containing all your:'),
+            SizedBox(height: 12),
+            _buildExportItem('Profile information'),
+            _buildExportItem('Nutrition entries'),
+            _buildExportItem('Workout logs'),
+            _buildExportItem('Weight history'),
+            _buildExportItem('Achievement progress'),
+            _buildExportItem('Streak data'),
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryAccent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.security, size: 16, color: AppTheme.primaryAccent),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Your data will be exported securely in JSON format.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('OK'),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel'),
           ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryAccent,
+            ),
+            child: Text('Export'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldExport == true) {
+      await DataExportService().exportUserData(context);
+    }
+  }
+
+  Widget _buildExportItem(String text) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(Icons.check, size: 16, color: AppTheme.primaryAccent),
+          SizedBox(width: 8),
+          Text(text, style: TextStyle(fontSize: 14)),
         ],
       ),
     );
@@ -1011,6 +1097,79 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Text('OK'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => DeleteAccountDialog(
+        onConfirm: () async {
+          try {
+            // Show loading dialog
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => WillPopScope(
+                onWillPop: () async => false,
+                child: AlertDialog(
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: AppTheme.primaryAccent),
+                      SizedBox(height: 16),
+                      Text('Deleting your account...'),
+                      SizedBox(height: 8),
+                      Text(
+                        'Please wait, this may take a moment.',
+                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+
+            // Delete account
+            await SupabaseService().deleteUserAccount();
+
+            // Close loading dialog
+            if (mounted) Navigator.pop(context);
+
+            // Navigate to welcome screen
+            if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+                (route) => false,
+              );
+
+              // Show confirmation after navigation
+              Future.delayed(Duration(milliseconds: 500), () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Account deleted successfully'),
+                    backgroundColor: AppTheme.successGreen,
+                  ),
+                );
+              });
+            }
+          } catch (e) {
+            // Close loading dialog
+            if (mounted) Navigator.pop(context);
+
+            // Show error message
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Failed to delete account: ${e.toString()}'),
+                  backgroundColor: AppTheme.errorRed,
+                  duration: Duration(seconds: 5),
+                ),
+              );
+            }
+          }
+        },
       ),
     );
   }

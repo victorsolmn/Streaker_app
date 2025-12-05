@@ -59,6 +59,16 @@ android {
 
     buildTypes {
         release {
+            // Enable code obfuscation and optimization for security
+            isMinifyEnabled = true
+            isShrinkResources = true
+            
+            // ProGuard configuration files
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            
             // Release signing configuration
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
