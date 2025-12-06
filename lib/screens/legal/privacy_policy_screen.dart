@@ -38,12 +38,14 @@ class PrivacyPolicyScreen extends StatelessWidget {
             _buildSection(
               context,
               '1. Information We Collect',
-              'We collect information you provide directly to us, such as when you create an account, update your profile, or use our fitness tracking features.\n\n'
+              'We collect information you provide directly to us, such as when you create an account, update your profile, or use our nutrition tracking features.\n\n'
               'This includes:\n'
               '• Personal information (name, email address)\n'
-              '• Health and fitness data (steps, heart rate, calories burned, sleep patterns)\n'
-              '• Photos of meals for nutrition tracking\n'
-              '• Device information and usage data',
+              '• Nutrition data (meal photos, calories, macronutrients - manually entered by you)\n'
+              '• Weight data (manually entered by you)\n'
+              '• Photos of meals for AI nutrition analysis\n'
+              '• Device information and usage data\n\n'
+              'NOTE: We do NOT collect steps, heart rate, sleep, or any automatic fitness data from trackers.',
             ),
 
             _buildSection(
@@ -70,13 +72,14 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
             _buildSection(
               context,
-              '4. Health Data Privacy',
-              'Your health and fitness data is extremely important to us:\n\n'
-              '• We sync with Android Health Connect and Apple HealthKit with your permission\n'
-              '• Health data is encrypted and stored securely\n'
-              '• We never sell your health information to third parties\n'
-              '• You can delete your health data at any time\n'
-              '• Data is used only to provide you with personalized fitness insights',
+              '4. Your Nutrition and Weight Data Privacy',
+              'Your nutrition and weight data is extremely important to us:\n\n'
+              '• All data is manually entered by YOU - we do NOT sync with fitness trackers or health apps\n'
+              '• Your data is encrypted and stored securely in our database\n'
+              '• We never sell your nutrition or weight information to third parties\n'
+              '• You can delete all your data at any time through the app\n'
+              '• Data is used only to provide you with nutrition insights and track your progress\n'
+              '• We do NOT have access to Health Connect, step counters, heart rate monitors, or sleep trackers',
             ),
 
             _buildSection(
