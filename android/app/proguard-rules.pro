@@ -92,9 +92,7 @@
 -keep class androidx.camera.** { *; }
 -dontwarn androidx.camera.**
 
-# Health Connect
--keep class androidx.health.** { *; }
--dontwarn androidx.health.**
+# Note: Health Connect rules REMOVED - SDK no longer used
 
 # Permissions
 -keep class com.karumi.dexter.** { *; }
