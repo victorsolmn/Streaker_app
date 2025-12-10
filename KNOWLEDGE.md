@@ -3,7 +3,107 @@
 ## Project Overview
 ---
 
-## Recent Updates (December 2024 - Version 1.0.21+25) - Google Play Compliance
+## Recent Updates (December 2024 - Version 1.0.24+28) - Health Connect SDK Removal
+
+### Google Play Store Compliance Fix - Health Apps Declaration
+
+**Date:** December 10, 2024  
+**Version:** 1.0.24+28  
+**Status:** ✅ Submitted for Production Review  
+**Issue Fixed:** "Inaccurate Health Apps Declaration" rejection
+
+#### Problem
+
+Google Play rejected the app because:
+1. Health Connect SDK was included in `build.gradle.kts`
+2. SDK auto-injected 13+ health permissions into the APK manifest
+3. App declared "Activity and Fitness" + "Sleep Management" categories
+4. But the app only uses manual nutrition/weight tracking (no health data sync)
+
+#### Solution
+
+**Files Changed (5 files, +13 lines, -2,326 lines):**
+
+| File | Change |
+|------|--------|
+| `android/app/build.gradle.kts` | Removed Health Connect SDK and related dependencies |
+| `android/app/.../MainActivity.kt` | Replaced 2,147 lines with minimal 13-line Flutter activity |
+| `android/app/.../HealthSyncWorker.kt` | **Deleted** - unused background worker |
+| `android/app/proguard-rules.pro` | Removed Health Connect ProGuard rules |
+| `pubspec.yaml` | Version bumped to 1.0.24+28 |
+
+**Play Console Changes:**
+- Updated Health Apps Declaration: Selected ONLY "Nutrition and weight management"
+- Updated Store Listing description: Removed all health tracking mentions
+- Updated Screenshots: Removed old screens showing steps/heart rate/sleep
+
+#### Current App Features (Accurate)
+
+The app now correctly declares what it actually does:
+- ✅ Manual nutrition tracking (user enters data + AI photo analysis)
+- ✅ Manual weight tracking (user enters weight)
+- ✅ AI chat assistant (health guidance)
+- ✅ Supplement catalog (view only, no purchase)
+- ✅ Streak tracking for nutrition goals
+
+**NOT included (removed from description):**
+- ❌ Health Connect / Google Fit sync
+- ❌ Steps, heart rate, sleep tracking
+- ❌ Activity recognition
+- ❌ Wearable device sync
+
+#### Technical Details
+
+**Removed from build.gradle.kts:**
+```kotlin
+// REMOVED:
+implementation("androidx.health.connect:connect-client:1.1.0-rc03")
+implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+implementation("androidx.activity:activity-ktx:1.9.0")
+implementation("androidx.fragment:fragment-ktx:1.7.0")
+implementation("androidx.work:work-runtime-ktx:2.9.0")
+```
+
+**New MainActivity.kt (minimal):**
+```kotlin
+package com.streaker.streaker
+
+import io.flutter.embedding.android.FlutterFragmentActivity
+
+class MainActivity: FlutterFragmentActivity()
+```
+
+#### Permissions After Cleanup
+
+The APK now only requests:
+- `CAMERA` - AI meal photo analysis
+- `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` - Photo gallery (Android 12-)
+- `READ_MEDIA_IMAGES` - Photo gallery (Android 13+)
+- `POST_NOTIFICATIONS` - Push notifications
+
+**No Health Connect permissions in final APK.**
+
+#### Build Output
+
+- **AAB Size:** 30.7 MB
+- **Location:** `build/app/outputs/bundle/release/app-release.aab`
+- **Copied to:** Desktop as `streaker-v1.0.24+28.aab`
+
+#### Submission Status
+
+- [x] Health Connect SDK removed
+- [x] AAB built successfully
+- [x] Uploaded to Internal Testing
+- [x] Health Apps Declaration updated
+- [x] Store listing updated
+- [x] Promoted to Production
+- [x] Submitted for Google review
+- [ ] Google approval (pending 1-3 days)
+
+---
+
+## Previous Updates (December 2024 - Version 1.0.21+25) - Google Play Compliance
 
 ### Google Play Policy Compliance Implementation - GOLD STANDARD
 

@@ -43,22 +43,33 @@
 
 ### Google Play Compliance Implementation
 
-**Version:** 1.0.21+25  
-**Status:** Gold Standard Implementation
+**Version:** 1.0.24+28  
+**Status:** Production Ready - Health Connect Removed
 
 #### Permission Architecture
 
-**Removed Unused Permissions:**
-- Bluetooth stack (5 permissions) - Not used by app
-- Location services (2 permissions) - Not used by app  
-- Samsung Health SDK (2 permissions) - App uses Health Connect instead
+**IMPORTANT UPDATE (v1.0.24+28):**  
+Health Connect SDK has been **completely removed** from the app. The app now uses only manual data entry - no health data sync from wearables or health apps.
 
-**Current Permission Model:**
-- Health Connect (13 permissions) - Core fitness tracking
-- Camera (1 permission) - Nutrition photo capture with rationale dialog
-- Activity Recognition - Step counting
-- Notifications (Android 13+) - Streak reminders
-- Storage - Temporary meal photo storage
+**Removed (v1.0.24+28):**
+- Health Connect SDK and all 13 health permissions
+- Activity Recognition permission
+- HealthSyncWorker.kt (background sync)
+- MainActivity.kt health methods (2,134 lines removed)
+
+**Current Permission Model (Minimal):**
+| Permission | Purpose | Required |
+|------------|---------|----------|
+| `CAMERA` | AI meal photo analysis | Yes |
+| `READ_EXTERNAL_STORAGE` | Photo gallery (Android 12-) | Yes |
+| `WRITE_EXTERNAL_STORAGE` | Save exports (Android 12-) | Yes |
+| `READ_MEDIA_IMAGES` | Photo gallery (Android 13+) | Yes |
+| `POST_NOTIFICATIONS` | Streak reminders | Optional |
+
+**Health Apps Declaration:**
+- ✅ Nutrition and weight management (selected)
+- ❌ Activity and fitness (NOT selected)
+- ❌ Sleep management (NOT selected)
 
 #### Privacy & Data Architecture
 
@@ -68,12 +79,18 @@
 - Contact: novatrient@gmail.com, Bangalore, India
 - Compliance: Google Play Data Safety, GDPR, COPPA
 
-**Data Safety Declaration:**
+**Data Safety Declaration (Updated v1.0.24+28):**
 - Personal Info: Name, email, user IDs
-- Health & Fitness: Steps, heart rate, calories, sleep, weight, workouts
-- Photos: Meal images (nutrition analysis only)
-- App Activity: Interactions, search history
+- Nutrition Data: Meal photos, calories, macros (user-entered)
+- Weight Data: Weight entries (user-entered)
+- Photos: Meal images (AI nutrition analysis only)
+- App Activity: Interactions, feature usage
 - Analytics: Firebase (anonymized)
+
+**NOT Collected (removed from declaration):**
+- ❌ Steps, heart rate, calories burned (no wearable sync)
+- ❌ Sleep data
+- ❌ Activity/exercise data from Health Connect
 
 **Third-Party Data Sharing:**
 - Supabase: Backend storage (encrypted)
