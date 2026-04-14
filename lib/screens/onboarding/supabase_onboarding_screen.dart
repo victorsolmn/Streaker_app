@@ -359,14 +359,40 @@ class _SupabaseOnboardingScreenState extends State<SupabaseOnboardingScreen>
             ],
           ),
           const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Step ${_currentStep + 1} of $_totalSteps',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryAccent,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              Text(
+                '${((_currentStep / _totalSteps) * 100).toInt()}% complete',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
           AnimatedBuilder(
             animation: _progressAnimation,
             builder: (context, child) {
-              return LinearProgressIndicator(
-                value: (_currentStep + _progressAnimation.value) / _totalSteps,
-                backgroundColor: AppTheme.primaryAccent.withOpacity(0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryAccent),
-                minHeight: 8,
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: (_currentStep + _progressAnimation.value) / _totalSteps,
+                  backgroundColor: AppTheme.primaryAccent.withOpacity(0.2),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryAccent),
+                  minHeight: 8,
+                ),
               );
             },
           ),

@@ -38,6 +38,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker _picker = ImagePicker();
   File? _profileImage;
+  bool _isRefreshing = false;
   
 
   @override
@@ -67,6 +68,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               children: [
+                if (_isRefreshing)
+                  LinearProgressIndicator(
+                    color: AppTheme.primaryAccent,
+                    backgroundColor: AppTheme.primaryAccent.withOpacity(0.18),
+                    minHeight: 3,
+                  ),
                 _buildHeader(),
                 _buildProfileInfo(),
                 _buildFitnessGoalsSection(),
@@ -81,6 +88,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _refreshProfile() async {
+    setState(() => _isRefreshing = true);
     try {
       // Refresh profile data
       final userProvider = Provider.of<SupabaseUserProvider>(context, listen: false);
@@ -94,7 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // Update UI
       if (mounted) {
-        setState(() {});
+        setState(() => _isRefreshing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Profile refreshed successfully!'),
@@ -105,6 +113,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isRefreshing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to refresh profile: ${e.toString()}'),

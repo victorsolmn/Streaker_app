@@ -484,7 +484,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         children: [
           IndexedStack(
             index: _currentIndex,
-            children: _screens,
+            children: _screens.asMap().entries.map((entry) {
+              return AnimatedOpacity(
+                opacity: entry.key == _currentIndex ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: entry.value,
+              );
+            }).toList(),
           ),
           // Sync status indicator - only show on home screen
           if (_currentIndex == 0) // Only show on home screen

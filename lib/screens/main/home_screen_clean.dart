@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import 'package:animated_flip_counter/animated_flip_counter.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/supabase_user_provider.dart';
 import '../../providers/health_provider.dart';
@@ -9,6 +11,7 @@ import '../../widgets/fitness_goal_summary_dialog.dart';
 import '../../widgets/streak_display_widget.dart';
 import '../../widgets/sync_status_indicator.dart';
 import '../../providers/streak_provider.dart';
+import '../../widgets/loading/app_shimmer.dart';
 import 'dart:math' as math;
 
 class HomeScreenClean extends StatefulWidget {
@@ -42,16 +45,18 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
       // Force reload profile from Supabase to get correct values
       final supabaseUserProvider = Provider.of<SupabaseUserProvider>(context, listen: false);
       await supabaseUserProvider.reloadUserProfile();
-      print('🔄 Force reloaded profile from Supabase');
-      print('   dailyActiveCaloriesTarget: ${supabaseUserProvider.userProfile?.dailyActiveCaloriesTarget}');
+      if (kDebugMode) {
+        debugPrint('🔄 Force reloaded profile from Supabase');
+        debugPrint('   dailyActiveCaloriesTarget: ${supabaseUserProvider.userProfile?.dailyActiveCaloriesTarget}');
+      }
 
       // Force reload nutrition data from Supabase
       final nutritionProv = Provider.of<NutritionProvider>(context, listen: false);
-      print('🔄 Loading nutrition data from Supabase...');
       await nutritionProv.loadDataFromSupabase();
-      print('   Nutrition entries loaded: ${nutritionProv.entries.length}');
-      print('   Today entries: ${nutritionProv.todayNutrition.entries.length}');
-      print('   Today calories: ${nutritionProv.todayNutrition.totalCalories}');
+      if (kDebugMode) {
+        debugPrint('🔄 Nutrition entries loaded: ${nutritionProv.entries.length}');
+        debugPrint('   Today calories: ${nutritionProv.todayNutrition.totalCalories}');
+      }
 
       await _initializeHealthData();
       _checkAndShowFitnessGoalSummary();
@@ -136,8 +141,13 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
             builder: (context, userProvider, healthProvider, nutritionProvider, streakProvider, child) {
               // Note: Do NOT call _syncMetricsToStreak() here - it causes infinite rebuilds
               // Sync is already handled in initState and _initializeHealthData
+              final bool isLoadingHealth = !healthProvider.isInitialized;
+              final bool hasNoData = healthProvider.isInitialized &&
+                  healthProvider.todaySteps == 0 &&
+                  healthProvider.todayCaloriesBurned == 0;
+
               return SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(), // Changed from AlwaysScrollableScrollPhysics to prevent pull-to-refresh
+                  physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.all(20.0),
                   child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -146,12 +156,14 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
                     _buildGreeting(userProvider, isDarkMode),
 
                     const SizedBox(height: 20),
-                    
-                    // Steps Circle and Streak Icons Row
-                    _buildTopSection(healthProvider, nutritionProvider, streakProvider, isDarkMode),
-                    
+
+                    // Steps Circle and Streak Icons Row — shimmer while loading
+                    isLoadingHealth
+                        ? const HomeTopSectionShimmer()
+                        : _buildTopSection(healthProvider, nutritionProvider, streakProvider, isDarkMode),
+
                     const SizedBox(height: 16),
-                    
+
                     // Motivational message
                     Center(
                       child: Text(
@@ -162,14 +174,22 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
                         textAlign: TextAlign.center,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 32),
-                    
-                    // Metrics Grid
-                    _buildMetricsGrid(healthProvider, nutritionProvider, isDarkMode),
-                    
+
+                    // Metrics Grid — shimmer while loading
+                    isLoadingHealth
+                        ? const HomeMetricsShimmer()
+                        : _buildMetricsGrid(healthProvider, nutritionProvider, isDarkMode),
+
+                    // Empty state — shown when health is initialized but no data
+                    if (!isLoadingHealth && hasNoData) ...[
+                      const SizedBox(height: 20),
+                      _buildNoDataBanner(isDarkMode),
+                    ],
+
                     const SizedBox(height: 32),
-                    
+
                     // Your Insights Section
                     _buildInsightsSection(healthProvider, nutritionProvider, userProvider, isDarkMode),
                   ],
@@ -353,14 +373,12 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Flexible(
-                      child: Text(
-                        '$steps',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                    AnimatedFlipCounter(
+                      value: steps,
+                      duration: const Duration(milliseconds: 800),
+                      textStyle: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(width: 2),
@@ -390,11 +408,9 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
     final supabaseUserProvider = Provider.of<SupabaseUserProvider>(context, listen: false);
     final profile = supabaseUserProvider.userProfile;
 
-    // Debug logging to trace the issue
-    print('🔍 DEBUG: Calories Card Data Loading');
-    print('   Profile exists: ${profile != null}');
-    print('   dailyActiveCaloriesTarget: ${profile?.dailyActiveCaloriesTarget}');
-    print('   dailyCaloriesTarget: ${profile?.dailyCaloriesTarget}');
+    if (kDebugMode) {
+      debugPrint('🔍 DEBUG: Calories Card - profile exists: ${profile != null}');
+    }
 
     final caloriesGoal = profile?.dailyActiveCaloriesTarget ?? 2000;
     final sleepGoal = profile?.dailySleepTarget ?? 8.0;
@@ -602,6 +618,53 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
     );
   }
 
+  Widget _buildNoDataBanner(bool isDarkMode) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryAccent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryAccent.withOpacity(0.25),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.health_and_safety_outlined,
+            color: AppTheme.primaryAccent,
+            size: 28,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'No health data yet',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: isDarkMode ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Connect your health app to see live metrics',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInsightsSection(HealthProvider healthProvider, NutritionProvider nutritionProvider, UserProvider userProvider, bool isDarkMode) {
     final insights = _generateInsights(healthProvider, nutritionProvider, userProvider);
     
@@ -758,13 +821,6 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
     final activeCalorieTarget = profile?.dailyActiveCaloriesTarget ?? 2000;
     final weightLossIntakeTarget = activeCalorieTarget - 400;
 
-    // Debug logging
-    print('🔍 DEBUG: Calories Left Calculation');
-    print('   activeCalorieTarget: $activeCalorieTarget');
-    print('   weightLossIntakeTarget: $weightLossIntakeTarget');
-    print('   caloriesConsumed: $caloriesConsumed');
-    print('   calories left: ${(weightLossIntakeTarget - caloriesConsumed).clamp(0, weightLossIntakeTarget)}');
-
     return (weightLossIntakeTarget - caloriesConsumed).clamp(0, weightLossIntakeTarget);
   }
 
@@ -778,16 +834,8 @@ class _HomeScreenCleanState extends State<HomeScreenClean>
     final activeCalorieTarget = profile?.dailyActiveCaloriesTarget ?? 2000;
     final weightLossIntakeTarget = activeCalorieTarget - 400;
 
-    // Debug logging
-    print('🔍 DEBUG: Calories Left Display');
-    print('   todayNutrition entries: ${todayNutrition?.entries.length ?? 0}');
-    print('   caloriesConsumed: $caloriesConsumed');
-    print('   activeCalorieTarget: $activeCalorieTarget');
-    print('   weightLossIntakeTarget: $weightLossIntakeTarget');
-    print('   Display: $caloriesConsumed/$weightLossIntakeTarget');
-
-    // Return format: "consumed/target"
-    return '$caloriesConsumed/$weightLossIntakeTarget';
+    final remaining = (weightLossIntakeTarget - caloriesConsumed).clamp(0, weightLossIntakeTarget);
+    return '$remaining left';
   }
 
 

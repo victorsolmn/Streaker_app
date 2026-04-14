@@ -1,7 +1,7 @@
 name: streaker_flutter
 description: A Streaker fitness tracking app built with Flutter.
 publish_to: 'none'
-version: 1.0.10+12
+version: 1.0.24+28
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -40,6 +40,11 @@ dependencies:
   # firebase_messaging: ^14.7.10
   # flutter_local_notifications: ^16.3.0
   app_settings: ^5.1.1
+  # UX enhancements
+  shimmer: ^3.0.0
+  lottie: ^3.1.0
+  animated_flip_counter: ^0.3.2
+  confetti: ^0.7.0
 
 dev_dependencies:
   flutter_test:

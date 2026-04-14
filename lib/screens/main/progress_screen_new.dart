@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:confetti/confetti.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/nutrition_provider.dart';
 import '../../providers/health_provider.dart';
@@ -31,6 +32,12 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late TabController _tabController;
+  late ConfettiController _confettiController;
+
+  static bool _isMilestone(int streak) {
+    if (streak <= 0) return false;
+    return streak == 7 || streak == 30 || streak == 100 || streak % 100 == 0;
+  }
 
   @override
   void initState() {
@@ -43,13 +50,24 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 3),
+    );
     _animationController.forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final streak = context.read<StreakProvider>().currentStreak;
+      if (_isMilestone(streak)) {
+        _confettiController.play();
+      }
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _animationController.dispose();
+    _confettiController.dispose();
     super.dispose();
   }
 
@@ -76,19 +94,39 @@ class _ProgressScreenNewState extends State<ProgressScreenNew>
           ],
         ),
       ),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: Consumer4<UserProvider, NutritionProvider, HealthProvider, StreakProvider>(
-          builder: (context, userProvider, nutritionProvider, healthProvider, streakProvider, child) {
-            return TabBarView(
-              controller: _tabController,
-              children: [
-                _buildProgressTab(userProvider, nutritionProvider, healthProvider, streakProvider),
-                _buildAchievementsTab(userProvider, nutritionProvider, healthProvider, streakProvider),
+      body: Stack(
+        children: [
+          FadeTransition(
+            opacity: _fadeAnimation,
+            child: Consumer4<UserProvider, NutritionProvider, HealthProvider, StreakProvider>(
+              builder: (context, userProvider, nutritionProvider, healthProvider, streakProvider, child) {
+                return TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildProgressTab(userProvider, nutritionProvider, healthProvider, streakProvider),
+                    _buildAchievementsTab(userProvider, nutritionProvider, healthProvider, streakProvider),
+                  ],
+                );
+              },
+            ),
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirectionality: BlastDirectionality.explosive,
+              numberOfParticles: 30,
+              gravity: 0.2,
+              emissionFrequency: 0.05,
+              colors: const [
+                AppTheme.primaryAccent,
+                AppTheme.accentFlameYellow,
+                AppTheme.accentFlameRed,
+                AppTheme.successGreen,
               ],
-            );
-          },
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }

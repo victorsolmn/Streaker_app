@@ -882,32 +882,12 @@ $recentContext
           ),
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: isDarkMode ? AppTheme.darkCardBackground : Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(18),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryAccent),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Thinking...',
-                  style: TextStyle(
-                    color: isDarkMode ? AppTheme.textSecondaryDark : AppTheme.textSecondary,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
+            child: const _BouncingDots(),
           ),
         ],
       ),
@@ -1895,6 +1875,79 @@ $recentContext
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Three bouncing dots shown while the AI is generating a response.
+class _BouncingDots extends StatefulWidget {
+  const _BouncingDots();
+
+  @override
+  State<_BouncingDots> createState() => _BouncingDotsState();
+}
+
+class _BouncingDotsState extends State<_BouncingDots>
+    with TickerProviderStateMixin {
+  late final List<AnimationController> _controllers;
+  late final List<Animation<double>> _animations;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(3, (i) {
+      return AnimationController(
+        duration: const Duration(milliseconds: 500),
+        vsync: this,
+      );
+    });
+
+    _animations = _controllers.map((c) {
+      return Tween<double>(begin: 0, end: -8).animate(
+        CurvedAnimation(parent: c, curve: Curves.easeInOut),
+      );
+    }).toList();
+
+    // Stagger each dot's bounce by 150ms
+    for (int i = 0; i < _controllers.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 150), () {
+        if (mounted) _controllers[i].repeat(reverse: true);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        return AnimatedBuilder(
+          animation: _animations[i],
+          builder: (context, child) {
+            return Transform.translate(
+              offset: Offset(0, _animations[i].value),
+              child: child,
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.primaryAccent,
+            ),
+          ),
+        );
+      }),
     );
   }
 }

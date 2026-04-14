@@ -985,6 +985,40 @@ class _NutritionScreenState extends State<NutritionScreen>
     );
   }
 
+  Widget _buildScanOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.72),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _PulsingFoodIcon(),
+              const SizedBox(height: 24),
+              const Text(
+                'Analyzing your meal...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'AI is identifying nutrients',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.65),
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1031,11 +1065,16 @@ class _NutritionScreenState extends State<NutritionScreen>
           ),
         ],
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Stack(
         children: [
-          _buildTodayTab(),
-          _buildHistoryTab(),
+          TabBarView(
+            controller: _tabController,
+            children: [
+              _buildTodayTab(),
+              _buildHistoryTab(),
+            ],
+          ),
+          if (_isScanning) _buildScanOverlay(),
         ],
       ),
       floatingActionButton: Column(
@@ -1363,6 +1402,75 @@ class _NutritionScreenState extends State<NutritionScreen>
     return date.year == now.year &&
            date.month == now.month &&
            date.day == now.day;
+  }
+}
+
+/// Animated pulsing food icon shown during AI meal analysis.
+class _PulsingFoodIcon extends StatefulWidget {
+  const _PulsingFoodIcon();
+
+  @override
+  State<_PulsingFoodIcon> createState() => _PulsingFoodIconState();
+}
+
+class _PulsingFoodIconState extends State<_PulsingFoodIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 900),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _scaleAnimation = Tween<double>(begin: 0.88, end: 1.12).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    _opacityAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _opacityAnimation.value,
+          child: Transform.scale(
+            scale: _scaleAnimation.value,
+            child: Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primaryAccent.withOpacity(0.18),
+                border: Border.all(
+                  color: AppTheme.primaryAccent.withOpacity(0.5),
+                  width: 2,
+                ),
+              ),
+              child: const Icon(
+                Icons.restaurant,
+                size: 44,
+                color: AppTheme.primaryAccent,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 
