@@ -44,6 +44,10 @@ dependencies:
   # Data export packages (GDPR compliance)
   share_plus: ^7.2.2
   path_provider: ^2.1.2
+  # UI/UX enhancement packages
+  shimmer: ^3.0.0
+  lottie: ^3.1.0
+  animated_flip_counter: ^0.3.4
 
 dev_dependencies:
   flutter_test:
